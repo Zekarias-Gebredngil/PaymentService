@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: payment-service-test
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  docker:
+    compose:
+      enabled: false
+
+payment:
+  default-currency: ETB
+  idempotency:
+    ttl-minutes: 1440
+  providers:
+    telebirr:
+      enabled: true
+      base-url: http://localhost:8089
+      app-id: test_app_id
+      app-key: test_app_key
+      short-code: 10011
+      public-key: test_public_key
+      private-key: test_private_key
+      callback-url: http://localhost:8080/api/v1/payment-providers/telebirr/callback
+      return-url: http://localhost:8080/api/v1/payments/return
+      timeout-seconds: 5
+
+logging:
+  level:
+    root: WARN
+    com.payment.nadi: INFO
