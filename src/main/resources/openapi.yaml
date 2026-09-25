@@ -1,0 +1,745 @@
+openapi: 3.0.3
+info:
+  title: Nadi Payment Service API
+  description: |
+    Enterprise Payment Orchestration and Double-Entry Ledger Microservice.
+    
+    ### Key Features:
+    * **Top-Up (C2B / Pay-In)**: Inbound collections via mobile money (Telebirr C2B).
+    * **Withdrawal (B2C / Payout)**: Outbound disbursements from customer wallet to mobile money.
+    * **Transfer (P2P / Ledger)**: Atomic internal account balance movement.
+    * **Double-Entry Ledger**: Auditable financial accounting records.
+    * **Idempotency Protection**: Enforced via `Idempotency-Key` headers on all mutating endpoints.
+    * **Cryptographic Security**: RSA-2048 & SHA256withRSA signature verification.
+  version: 1.0.0
+  contact:
+    name: Naditech Engineering Team
+    email: engineering@naditech.com
+    url: https://naditech.com
+  license:
+    name: Proprietary
+    url: https://naditech.com/terms
+
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+  - url: https://api.naditech.com
+    description: Production Gateway
+
+tags:
+  - name: Top-Up Operations
+    description: Inbound funds collection (C2B / Pay-In) via mobile money providers like Telebirr
+  - name: Withdrawal Operations
+    description: Outbound disbursements (B2C / Payout) from user wallets to mobile money accounts
+  - name: Transfer Operations
+    description: Peer-to-peer (P2P) atomic account transfers within the internal ledger
+  - name: Payment Queries & Status
+    description: Query payment details, transaction ledger items, and refresh provider statuses
+  - name: Payment Provider Webhooks
+    description: Asynchronous webhook callbacks from payment gateways (Telebirr C2B/B2C)
+
+paths:
+  /api/v1/payments/topups:
+    post:
+      tags:
+        - Top-Up Operations
+      summary: Initiate a Wallet Top-Up
+      description: Creates a top-up transaction and returns a checkout/redirect URL or USSD prompt identifier. Protected by two-phase idempotency.
+      operationId: initiateTopUp
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Unique UUID or client key guaranteeing at-most-once execution
+          schema:
+            type: string
+            example: topup-usr123-20260925-001
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Distributed tracing correlation ID
+          schema:
+            type: string
+            example: corr-7c9d0e1f
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopUpRequest'
+      responses:
+        '202':
+          description: Top-up initiated successfully and pending provider settlement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+        '400':
+          description: Invalid request payload or currency mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '409':
+          description: Concurrent idempotent request already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '502':
+          description: Upstream payment provider communication failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+
+  /api/v1/payments/withdrawals:
+    post:
+      tags:
+        - Withdrawal Operations
+      summary: Initiate a Withdrawal / Cash-Out
+      description: Validates available wallet balance, places a debit hold, and dispatches a B2C disbursement to the recipient provider wallet. Automatically reverts funds upon provider rejection.
+      operationId: initiateWithdrawal
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Unique UUID or client key guaranteeing at-most-once execution
+          schema:
+            type: string
+            example: wth-usr123-20260925-001
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Distributed tracing correlation ID
+          schema:
+            type: string
+            example: corr-8a1b2c3d
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawRequest'
+      responses:
+        '202':
+          description: Withdrawal initiated or settled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+        '400':
+          description: Invalid payload or insufficient account balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '409':
+          description: Concurrent idempotent request already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '502':
+          description: Provider disbursement communication failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+
+  /api/v1/payments/transfers:
+    post:
+      tags:
+        - Transfer Operations
+      summary: Initiate an Internal Account Transfer
+      description: Transfers monetary value between two distinct accounts atomically. Posts balanced debit and credit entries to the ledger.
+      operationId: initiateTransfer
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Unique UUID or client key guaranteeing at-most-once execution
+          schema:
+            type: string
+            example: tx-usr123-20260925-001
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: Distributed tracing correlation ID
+          schema:
+            type: string
+            example: corr-9b2c3d4e
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          description: Transfer settled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+        '400':
+          description: Invalid accounts or source equals destination account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '409':
+          description: Concurrent idempotent request already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+        '422':
+          description: Insufficient funds in source account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+
+  /api/v1/payments/{paymentId}:
+    get:
+      tags:
+        - Payment Queries & Status
+      summary: Get Payment by ID
+      description: Retrieves current payment status and financial metadata by primary UUID.
+      operationId: getPaymentById
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Primary UUID of the payment record
+          schema:
+            type: string
+            format: uuid
+            example: e4a2f8b1-38f1-460d-9b7e-908bc43d1a8e
+      responses:
+        '200':
+          description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+        '404':
+          description: Payment ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+
+  /api/v1/payments/reference/{reference}:
+    get:
+      tags:
+        - Payment Queries & Status
+      summary: Get Payment by Reference
+      description: Retrieves payment details by unique tracking reference (e.g. TOP-20260925-001).
+      operationId: getPaymentByReference
+      parameters:
+        - name: reference
+          in: path
+          required: true
+          description: Payment tracking reference
+          schema:
+            type: string
+            example: TOP-20260925-9B7E90
+      responses:
+        '200':
+          description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+        '404':
+          description: Payment reference not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApiResponse'
+
+  /api/v1/payments:
+    get:
+      tags:
+        - Payment Queries & Status
+      summary: List Customer Payments
+      description: Returns a paginated list of payment transactions for a given customer ID.
+      operationId: getCustomerPayments
+      parameters:
+        - name: customerId
+          in: query
+          required: true
+          description: Customer UUID filter
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          description: Zero-indexed page number
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Items per page (max 100)
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated payment history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagePaymentApiResponse'
+
+  /api/v1/payments/{paymentId}/transactions:
+    get:
+      tags:
+        - Payment Queries & Status
+      summary: Get Payment Ledger Transactions
+      description: Retrieves all financial ledger bookings and fees associated with a payment.
+      operationId: getPaymentTransactions
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Payment UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Associated ledger transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListApiResponse'
+
+  /api/v1/payments/{paymentId}/refresh:
+    post:
+      tags:
+        - Payment Queries & Status
+      summary: Refresh Payment Status from Gateway
+      description: Directly queries the external provider (e.g. Telebirr Order Query API) and updates payment status if changed.
+      operationId: refreshPaymentStatus
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Payment UUID to synchronize
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentApiResponse'
+
+  /api/v1/payment-providers/telebirr/callback:
+    post:
+      tags:
+        - Payment Provider Webhooks
+      summary: Telebirr Asynchronous Payment Callback
+      description: Receives signed JSON webhook from Ethio Telecom Telebirr gateway after customer enters PIN or order clears. Cryptographically verifies RSA-SHA256 signature before settling transaction.
+      operationId: handleTelebirrCallback
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelebirrCallbackPayload'
+      responses:
+        '200':
+          description: Callback accepted and processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+        '400':
+          description: Invalid signature, unknown reference, or amount mismatch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 1
+                  message:
+                    type: string
+                    example: Invalid signature
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Authorization header using the Bearer scheme.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: API key for service-to-service communication.
+
+  schemas:
+    TopUpRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - customerId
+        - paymentMethod
+      properties:
+        amount:
+          type: number
+          format: decimal
+          example: 1500.00
+          minimum: 0.01
+        currency:
+          type: string
+          example: ETB
+        customerId:
+          type: string
+          format: uuid
+          example: d3b07384-d113-469b-a010-85f269a23d8c
+        destinationAccountId:
+          type: string
+          format: uuid
+          description: Internal wallet account to credit (optional if derived from customerId)
+        paymentMethod:
+          $ref: '#/components/schemas/PaymentMethodDto'
+        returnUrl:
+          type: string
+          format: uri
+          example: https://app.naditech.com/payments/return
+        description:
+          type: string
+          example: Mobile wallet top-up
+        sourceSystem:
+          type: string
+          example: MOBILE_APP
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    WithdrawRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - customerId
+        - sourceAccountId
+        - paymentMethod
+      properties:
+        amount:
+          type: number
+          format: decimal
+          example: 500.00
+          minimum: 0.01
+        currency:
+          type: string
+          example: ETB
+        customerId:
+          type: string
+          format: uuid
+        sourceAccountId:
+          type: string
+          format: uuid
+          description: Account from which funds are debited
+        paymentMethod:
+          $ref: '#/components/schemas/PaymentMethodDto'
+        description:
+          type: string
+          example: Payout to Telebirr wallet
+        sourceSystem:
+          type: string
+          example: MOBILE_APP
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    TransferRequest:
+      type: object
+      required:
+        - sourceAccountId
+        - destinationAccountId
+        - amount
+        - currency
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        destinationAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+          example: 200.00
+          minimum: 0.01
+        currency:
+          type: string
+          example: ETB
+        customerId:
+          type: string
+          format: uuid
+        description:
+          type: string
+          example: P2P transfer
+        sourceSystem:
+          type: string
+          example: MOBILE_APP
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    PaymentMethodDto:
+      type: object
+      required:
+        - type
+        - identifier
+      properties:
+        type:
+          type: string
+          enum: [TELEBIRR, INTERNAL_LEDGER, CHAPA, CBE_BIRR, STRIPE]
+          example: TELEBIRR
+        identifier:
+          type: string
+          description: Mobile number, card token, or wallet identifier
+          example: '0911223344'
+
+    TelebirrCallbackPayload:
+      type: object
+      properties:
+        msisdn:
+          type: string
+          example: '0911223344'
+        outTradeNo:
+          type: string
+          example: TOP-20260925-9B7E90
+        totalAmount:
+          type: string
+          example: '1500.00'
+        tradeDate:
+          type: string
+          example: '2026-09-25 16:05:00'
+        tradeNo:
+          type: string
+          example: TB20260925123456
+        tradeStatus:
+          type: string
+          example: Completed
+        sign:
+          type: string
+          description: Base64 RSA-SHA256 digital signature generated by Telebirr
+        signType:
+          type: string
+          example: SHA256WithRSA
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          example: e4a2f8b1-38f1-460d-9b7e-908bc43d1a8e
+        reference:
+          type: string
+          example: TOP-20260925-9B7E90
+        type:
+          type: string
+          enum: [TOP_UP, WITHDRAW, TRANSFER, REFUND]
+        status:
+          type: string
+          enum: [CREATED, PENDING, PROCESSING, SUCCESS, FAILED, CANCELLED, EXPIRED]
+        amount:
+          type: number
+          format: decimal
+          example: 1500.00
+        currency:
+          type: string
+          example: ETB
+        customerId:
+          type: string
+          format: uuid
+        sourceAccountId:
+          type: string
+          format: uuid
+        destinationAccountId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          example: TELEBIRR
+        providerReference:
+          type: string
+          example: TB20260925123456
+        redirectUrl:
+          type: string
+          description: Gateway checkout URL for customer payment completion
+          example: https://app.ethiomobilemoney.et:2121/payment/web/pay?token=...
+        failureReason:
+          type: string
+        sourceSystem:
+          type: string
+          example: MOBILE_APP
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TransactionResponse:
+      type: object
+      properties:
+        transactionId:
+          type: string
+          format: uuid
+        reference:
+          type: string
+          example: TXN-20260925-4A1B2C
+        paymentId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        status:
+          type: string
+        amount:
+          type: number
+        fee:
+          type: number
+        currency:
+          type: string
+        accountId:
+          type: string
+          format: uuid
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PaymentApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation completed successfully
+        data:
+          $ref: '#/components/schemas/PaymentResponse'
+        error:
+          type: object
+          nullable: true
+        correlationId:
+          type: string
+          example: corr-7c9d0e1f
+        timestamp:
+          type: string
+          format: date-time
+
+    PagePaymentApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/PaymentResponse'
+            page:
+              type: integer
+            size:
+              type: integer
+            totalElements:
+              type: integer
+            totalPages:
+              type: integer
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    TransactionListApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionResponse'
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Validation failed
+        data:
+          type: object
+          nullable: true
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: INVALID_INPUT
+            details:
+              type: string
+              example: Amount must be greater than zero
+            fieldErrors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+        correlationId:
+          type: string
+          example: corr-7c9d0e1f
+        timestamp:
+          type: string
+          format: date-time
