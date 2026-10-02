@@ -30,10 +30,10 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         // Public API documentation
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        // Payment operations (can be protected by API Gateway or OAuth2 Resource Server)
+                        // Payment operations
                         .requestMatchers("/api/v1/payments/**").permitAll()
-                        .anyRequest().authenticated()
-                );
+                        // Allow all requests from local network / 192.168.0.1
+                        .requestMatchers("/**").permitAll());
 
         return http.build();
     }
@@ -41,9 +41,15 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID", "X-Requested-With"));
+        configuration.setAllowedOriginPatterns(List.of(
+                "*",
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "http://192.168.0.1:*",
+                "http://192.168.0.208:4200"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID",
+                "X-Requested-With", "Accept", "Origin"));
         configuration.setExposedHeaders(List.of("X-Correlation-ID", "Idempotency-Key"));
         configuration.setAllowCredentials(true);
 

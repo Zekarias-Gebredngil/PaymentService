@@ -4,12 +4,11 @@ import com.payment.nadi.application.dto.response.PageResponse;
 import com.payment.nadi.application.dto.response.PaymentResponse;
 import com.payment.nadi.application.dto.response.TransactionResponse;
 import com.payment.nadi.application.port.in.PaymentQueryUseCase;
+import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.common.response.ApiResponse;
+import com.payment.nadi.domain.model.Money;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,17 +27,26 @@ import java.util.UUID;
 public class PaymentController {
 
     private final PaymentQueryUseCase paymentQueryUseCase;
+    private final WalletService walletService;
 
-    public PaymentController(PaymentQueryUseCase paymentQueryUseCase) {
+    public PaymentController(PaymentQueryUseCase paymentQueryUseCase, WalletService walletService) {
         this.paymentQueryUseCase = paymentQueryUseCase;
+        this.walletService = walletService;
+    }
+
+    @GetMapping("/accounts/{accountId}/balance")
+    @Operation(summary = "Get Real-Time Database Balance", description = "Calculates and returns the live double-entry ledger balance directly from PostgreSQL database.")
+    public ResponseEntity<ApiResponse<Money>> getAccountBalance(
+            @Parameter(description = "Account UUID")
+            @PathVariable UUID accountId,
+            @RequestParam(defaultValue = "ETB") String currency
+    ) {
+        Money balance = walletService.getBalance(accountId, currency);
+        return ResponseEntity.ok(ApiResponse.ok(balance));
     }
 
     @GetMapping("/{paymentId}")
     @Operation(summary = "Get Payment by ID", description = "Retrieves current payment status and financial metadata by primary UUID.")
-    @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Payment found"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Payment ID not found")
-    })
     public ResponseEntity<ApiResponse<PaymentResponse>> getPaymentById(
             @Parameter(description = "Primary UUID of the payment record", example = "e4a2f8b1-38f1-460d-9b7e-908bc43d1a8e")
             @PathVariable UUID paymentId
@@ -48,11 +56,7 @@ public class PaymentController {
     }
 
     @GetMapping("/reference/{reference}")
-    @Operation(summary = "Get Payment by Reference", description = "Retrieves payment details by unique tracking reference (e.g. TOP-20260925-001).")
-    @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Payment found"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Payment reference not found")
-    })
+    @Operation(summary = "Get Payment by Reference", description = "Retrieves payment details by unique tracking reference.")
     public ResponseEntity<ApiResponse<PaymentResponse>> getPaymentByReference(
             @Parameter(description = "Payment reference code", example = "TOP-20260925-9B7E90")
             @PathVariable String reference
@@ -62,7 +66,7 @@ public class PaymentController {
     }
 
     @GetMapping
-    @Operation(summary = "List Customer Payments", description = "Returns a paginated list of payment transactions for a given customer ID.")
+    @Operation(summary = "List Customer Payments", description = "Returns a paginated list of payment transactions from the database for a given customer ID.")
     public ResponseEntity<ApiResponse<PageResponse<PaymentResponse>>> getCustomerPayments(
             @Parameter(description = "Customer UUID filter", required = true)
             @RequestParam UUID customerId,
@@ -86,7 +90,7 @@ public class PaymentController {
     }
 
     @PostMapping("/{paymentId}/refresh")
-    @Operation(summary = "Refresh Payment Status from Gateway", description = "Directly queries the external provider (e.g. Telebirr Order Query API) and updates payment status if changed.")
+    @Operation(summary = "Refresh Payment Status from Gateway", description = "Directly queries the external provider and updates payment status if changed.")
     public ResponseEntity<ApiResponse<PaymentResponse>> refreshPaymentStatus(
             @Parameter(description = "Payment UUID to synchronize")
             @PathVariable UUID paymentId
