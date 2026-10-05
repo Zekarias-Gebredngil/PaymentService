@@ -1,4 +1,11 @@
-package com.payment.nadi.interfaces.rest;
+﻿package com.payment.nadi.interfaces.rest;
+
+import com.payment.nadi.application.dto.response.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import java.util.Map;
 
 import com.payment.nadi.common.response.ApiResponse;
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
@@ -48,6 +55,15 @@ public class AccountController {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
     }
+
+    public record AdminCreateAccountRequest(
+            @NotBlank(message = "Full name is required") String fullName,
+            @NotBlank(message = "Phone number is required") String phoneNumber,
+            String email,
+            @NotBlank(message = "Password is required") @Size(min = 6, message = "Password must be at least 6 characters") String password,
+            String role,
+            Boolean autoActivate
+    ) {}
 
     public record RegisterRequest(
             @NotBlank(message = "Full name is required") String fullName,
@@ -323,19 +339,105 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.ok("Password successfully updated and securely hashed.", UserAccountDto.fromEntity(saved)));
     }
 
-    @GetMapping("/accounts")
-    @Operation(summary = "List All Accounts (Admin)", description = "Returns all registered accounts for administrative monitoring and approval.")
-    public ResponseEntity<ApiResponse<List<UserAccountDto>>> listAccounts(
-            @RequestParam(required = false, defaultValue = "ALL") String status
-    ) {
-        List<UserAccountEntity> list;
-        if ("ALL".equalsIgnoreCase(status)) {
-            list = repository.findAllByOrderByCreatedAtDesc();
-        } else {
-            list = repository.findByStatusOrderByCreatedAtDesc(status.toUpperCase());
+    @PostMapping("/accounts")
+    @Operation(summary = "Admin Register User Account", description = "Allows an administrator to register and provision a new account directly.")
+    public ResponseEntity<ApiResponse<UserAccountDto>> adminRegisterAccount(@Valid @RequestBody AdminCreateAccountRequest request) {
+        String cleanPhone = request.phoneNumber().trim();
+        if (repository.existsByPhoneNumber(cleanPhone)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("PHONE_EXISTS", "An account with this phone number already exists"));
         }
-        List<UserAccountDto> dtos = list.stream().map(UserAccountDto::fromEntity).toList();
-        return ResponseEntity.ok(ApiResponse.ok(dtos));
+
+        if (request.password() == null || request.password().trim().length() < 6) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("INVALID_PASSWORD", "Password must be at least 6 characters long"));
+        }
+
+        UUID userId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        UUID sourceAccountId = UUID.randomUUID();
+        String accNum = generateNumericAccountNumber();
+        String hashedPassword = passwordEncoder.encode(request.password().trim());
+
+        boolean shouldActivate = request.autoActivate() == null || Boolean.TRUE.equals(request.autoActivate());
+        String initialStatus = shouldActivate ? "ACTIVE" : "PENDING_APPROVAL";
+
+        UserAccountEntity entity = UserAccountEntity.builder()
+                .id(userId)
+                .fullName(request.fullName().trim())
+                .phoneNumber(cleanPhone)
+                .email(request.email() != null ? request.email().trim() : "")
+                .password(hashedPassword)
+                .role(request.role() != null && !request.role().isBlank() ? request.role().toUpperCase() : "CUSTOMER")
+                .accountNumber(accNum)
+                .customerId(customerId)
+                .sourceAccountId(sourceAccountId)
+                .status(initialStatus)
+                .createdAt(Instant.now())
+                .approvedAt(shouldActivate ? Instant.now() : null)
+                .approvedBy(shouldActivate ? "admin" : null)
+                .build();
+
+        UserAccountEntity saved = repository.save(entity);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("User account successfully registered" + (shouldActivate ? " and activated!" : "!"), UserAccountDto.fromEntity(saved)));
+    }
+
+    @GetMapping("/accounts")
+    @Operation(summary = "List All Accounts (Admin)", description = "Returns a paginated list of registered accounts for administrative monitoring and approval.")
+    public ResponseEntity<ApiResponse<PageResponse<UserAccountDto>>> listAccounts(
+            @RequestParam(required = false, defaultValue = "ALL") String status,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String direction
+    ) {
+        int pageIndex = Math.max(0, page);
+        int pageSize = (size != null && size > 0) ? size : ((limit != null && limit > 0) ? limit : 10);
+
+        String validSortBy = switch (sortBy != null ? sortBy.trim() : "createdAt") {
+            case "fullName" -> "fullName";
+            case "accountNumber" -> "accountNumber";
+            case "phoneNumber" -> "phoneNumber";
+            case "status" -> "status";
+            default -> "createdAt";
+        };
+        Sort.Direction sortDir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize, Sort.by(sortDir, validSortBy));
+
+        Page<UserAccountEntity> pageResult;
+        if (query != null && !query.trim().isEmpty()) {
+            pageResult = repository.searchAccounts(
+                    "ALL".equalsIgnoreCase(status) ? "ALL" : status.toUpperCase(),
+                    query.trim(),
+                    pageable
+            );
+        } else if ("ALL".equalsIgnoreCase(status)) {
+            pageResult = repository.findAll(pageable);
+        } else {
+            pageResult = repository.findByStatus(status.toUpperCase(), pageable);
+        }
+
+        List<UserAccountDto> dtos = pageResult.getContent().stream().map(UserAccountDto::fromEntity).toList();
+        PageResponse<UserAccountDto> response = PageResponse.of(dtos, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/accounts/stats")
+    @Operation(summary = "Get Account Metrics (Admin)", description = "Returns summary counts of registered, pending, active, and suspended accounts.")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> getAccountStats() {
+        long total = repository.count();
+        long pending = repository.countByStatus("PENDING_APPROVAL");
+        long active = repository.countByStatus("ACTIVE");
+        long suspended = repository.countByStatus("SUSPENDED") + repository.countByStatus("REJECTED");
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                "total", total,
+                "pending", pending,
+                "active", active,
+                "suspended", suspended
+        )));
     }
 
     @GetMapping("/accounts/lookup")
