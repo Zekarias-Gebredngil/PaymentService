@@ -61,3 +61,10 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
     depends_on:
       - loki
+
+  redis:
+    image: 'redis:alpine'
+    container_name: 'nadi-redis'
+    ports:
+      - '6379:6379'
+

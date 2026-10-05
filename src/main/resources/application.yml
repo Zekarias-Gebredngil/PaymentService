@@ -6,13 +6,17 @@ spring:
     name: payment-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nadipayment-db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nadipayment-db?reWriteBatchedInserts=true}
     username: ${SPRING_DATASOURCE_USERNAME:nadi}
     password: ${SPRING_DATASOURCE_PASSWORD:nadi}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 20000
-      maximum-pool-size: 10
+      minimum-idle: 5
+      maximum-pool-size: 15
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      leak-detection-threshold: 2000
 
   jpa:
     hibernate:
@@ -21,6 +25,23 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          batch_size: 25
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 2000ms
+
+  cache:
+    type: ${SPRING_CACHE_TYPE:redis}
+    redis:
+      time-to-live: 600000ms
+      cache-null-values: false
 
   docker:
     compose:
@@ -99,4 +120,39 @@ logging:
 loki:
   url: ${LOKI_URL:http://localhost:3100/loki/api/v1/push}
   enabled: ${LOKI_ENABLED:true}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      telebirrClient:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+  retry:
+    instances:
+      telebirrClient:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+  ratelimiter:
+    instances:
+      telebirrClient:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 500ms
+
 
