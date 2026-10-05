@@ -95,3 +95,8 @@ logging:
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
     org.apache.kafka: INFO
+
+loki:
+  url: ${LOKI_URL:http://localhost:3100/loki/api/v1/push}
+  enabled: ${LOKI_ENABLED:true}
+
