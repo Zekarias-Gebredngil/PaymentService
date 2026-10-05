@@ -7,14 +7,17 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -22,9 +25,23 @@ import java.util.UUID;
 public class AccountController {
 
     private final SpringDataUserAccountRepository repository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AccountController(SpringDataUserAccountRepository repository) {
+    @Value("${app.seed.admin.phone:${ADMIN_PHONE:}}")
+    private String seedAdminPhone;
+
+    @Value("${app.seed.admin.password:${ADMIN_PASSWORD:}}")
+    private String seedAdminPassword;
+
+    @Value("${app.seed.admin.name:${ADMIN_NAME:Administrator}}")
+    private String seedAdminName;
+
+    @Value("${app.seed.admin.email:${ADMIN_EMAIL:}}")
+    private String seedAdminEmail;
+
+    public AccountController(SpringDataUserAccountRepository repository, PasswordEncoder passwordEncoder) {
         this.repository = repository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public record RegisterRequest(
@@ -38,6 +55,13 @@ public class AccountController {
     public record LoginRequest(
             @NotBlank String identifier,
             @NotBlank String password
+    ) {}
+
+    public record ChangePasswordRequest(
+            UUID userId,
+            String identifier,
+            @NotBlank String oldPassword,
+            @NotBlank String newPassword
     ) {}
 
     public record UserAccountDto(
@@ -72,6 +96,26 @@ public class AccountController {
         }
     }
 
+    private boolean isBcryptHash(String password) {
+        if (password == null) return false;
+        return password.matches("^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$");
+    }
+
+    private boolean isNumericAccountNumber(String accNum) {
+        // Enforces pattern like 00564829: only numbers, no characters, starting with 0, 8 digits long
+        return accNum != null && accNum.matches("^0\\d{7}$");
+    }
+
+    private String generateNumericAccountNumber() {
+        // Generates an 8-digit numeric account number starting with 0 (e.g. 00564829)
+        String accNum;
+        do {
+            int randomPart = ThreadLocalRandom.current().nextInt(1_000_000);
+            accNum = String.format("00%06d", randomPart);
+        } while (repository.existsByAccountNumber(accNum));
+        return accNum;
+    }
+
     private Optional<UserAccountEntity> findUserByIdentifier(String identifier) {
         if (identifier == null || identifier.isBlank()) return Optional.empty();
         String clean = identifier.trim();
@@ -83,86 +127,55 @@ public class AccountController {
     }
 
     @PostConstruct
-    public void seedInitialAccounts() {
-        // 1. System Admin
-        if (!repository.existsByPhoneNumber("0900000000")) {
-            repository.save(UserAccountEntity.builder()
-                    .id(UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                    .fullName("System Administrator")
-                    .phoneNumber("0900000000")
-                    .email("admin@nadipay.et")
-                    .password("admin123")
-                    .role("ADMIN")
-                    .accountNumber("ADM-000001")
-                    .customerId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                    .sourceAccountId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
-                    .status("ACTIVE")
-                    .createdAt(Instant.now())
-                    .approvedAt(Instant.now())
-                    .approvedBy("SYSTEM")
-                    .build());
+    public void onStartup() {
+        // Optional environment-configured initial administrator seed (no hardcoded credentials)
+        if (seedAdminPhone != null && !seedAdminPhone.isBlank() &&
+            seedAdminPassword != null && !seedAdminPassword.isBlank()) {
+            String cleanPhone = seedAdminPhone.trim();
+            if (!repository.existsByPhoneNumber(cleanPhone)) {
+                UUID adminId = UUID.randomUUID();
+                UUID customerId = UUID.randomUUID();
+                UUID sourceAccountId = UUID.randomUUID();
+                String accNum = generateNumericAccountNumber();
+
+                repository.save(UserAccountEntity.builder()
+                        .id(adminId)
+                        .fullName(seedAdminName != null && !seedAdminName.isBlank() ? seedAdminName.trim() : "Administrator")
+                        .phoneNumber(cleanPhone)
+                        .email(seedAdminEmail != null ? seedAdminEmail.trim() : "")
+                        .password(passwordEncoder.encode(seedAdminPassword.trim()))
+                        .role("ADMIN")
+                        .accountNumber(accNum)
+                        .customerId(customerId)
+                        .sourceAccountId(sourceAccountId)
+                        .status("ACTIVE")
+                        .createdAt(Instant.now())
+                        .approvedAt(Instant.now())
+                        .approvedBy("SYSTEM")
+                        .build());
+            }
         }
 
-        // 2. Abebe Bikila
-        if (!repository.existsByPhoneNumber("0911223344")) {
-            repository.save(UserAccountEntity.builder()
-                    .id(UUID.fromString("a0000000-0000-0000-0000-000000000001"))
-                    .fullName("Abebe Bikila")
-                    .phoneNumber("0911223344")
-                    .email("abebe@example.com")
-                    .password("123456")
-                    .role("CUSTOMER")
-                    .accountNumber("ACC-0911223344")
-                    .customerId(UUID.fromString("a1000000-0000-0000-0000-000000000001"))
-                    .sourceAccountId(UUID.fromString("a2000000-0000-0000-0000-000000000001"))
-                    .status("ACTIVE")
-                    .createdAt(Instant.now())
-                    .approvedAt(Instant.now())
-                    .approvedBy("ADMIN")
-                    .build());
-        }
-
-        // 3. Brhane Wolde
-        if (!repository.existsByPhoneNumber("0922334455")) {
-            repository.save(UserAccountEntity.builder()
-                    .id(UUID.fromString("b0000000-0000-0000-0000-000000000002"))
-                    .fullName("Brhane Wolde")
-                    .phoneNumber("0922334455")
-                    .email("brhane@example.com")
-                    .password("123456")
-                    .role("CUSTOMER")
-                    .accountNumber("ACC-0922334455")
-                    .customerId(UUID.fromString("b1000000-0000-0000-0000-000000000002"))
-                    .sourceAccountId(UUID.fromString("b2000000-0000-0000-0000-000000000002"))
-                    .status("ACTIVE")
-                    .createdAt(Instant.now())
-                    .approvedAt(Instant.now())
-                    .approvedBy("ADMIN")
-                    .build());
-        }
-
-        // 4. Merchant Store
-        if (!repository.existsByPhoneNumber("0933445566")) {
-            repository.save(UserAccountEntity.builder()
-                    .id(UUID.fromString("c0000000-0000-0000-0000-000000000003"))
-                    .fullName("Merchant Store")
-                    .phoneNumber("0933445566")
-                    .email("merchant@store.et")
-                    .password("123456")
-                    .role("MERCHANT")
-                    .accountNumber("ACC-0933445566")
-                    .customerId(UUID.fromString("c1000000-0000-0000-0000-000000000003"))
-                    .sourceAccountId(UUID.fromString("c2000000-0000-0000-0000-000000000003"))
-                    .status("ACTIVE")
-                    .createdAt(Instant.now())
-                    .approvedAt(Instant.now())
-                    .approvedBy("ADMIN")
-                    .build());
+        // Ensure all stored account numbers and passwords adhere to required patterns
+        List<UserAccountEntity> allUsers = repository.findAll();
+        for (UserAccountEntity u : allUsers) {
+            boolean changed = false;
+            if (!isNumericAccountNumber(u.getAccountNumber())) {
+                u.setAccountNumber(generateNumericAccountNumber());
+                changed = true;
+            }
+            if (!isBcryptHash(u.getPassword())) {
+                u.setPassword(passwordEncoder.encode(u.getPassword().trim()));
+                changed = true;
+            }
+            if (changed) {
+                repository.save(u);
+            }
         }
     }
 
     @PostMapping("/auth/register")
-    @Operation(summary = "Register User Account", description = "Registers a new user. The account is initialized in PENDING_APPROVAL status and must be approved by an administrator before transactions are allowed.")
+    @Operation(summary = "Register User Account", description = "Registers a new user with salted hashed credentials and an 8-digit numeric account number starting with 0.")
     public ResponseEntity<ApiResponse<UserAccountDto>> register(@RequestBody RegisterRequest request) {
         String cleanPhone = request.phoneNumber().trim();
         if (repository.existsByPhoneNumber(cleanPhone)) {
@@ -170,17 +183,27 @@ public class AccountController {
                     .body(ApiResponse.error("PHONE_EXISTS", "An account with this phone number already exists"));
         }
 
+        if (request.password() == null || request.password().trim().length() < 6) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("INVALID_PASSWORD", "Password must be at least 6 characters long"));
+        }
+
         UUID userId = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         UUID sourceAccountId = UUID.randomUUID();
-        String accNum = "ACC-" + (cleanPhone.length() >= 6 ? cleanPhone.substring(cleanPhone.length() - 6) : String.format("%06d", (int)(Math.random() * 900000) + 100000));
+        
+        // 8-digit numeric account number starting with 0 (e.g. 00564829)
+        String accNum = generateNumericAccountNumber();
+
+        // Salt and hash password with BCrypt
+        String hashedPassword = passwordEncoder.encode(request.password().trim());
 
         UserAccountEntity entity = UserAccountEntity.builder()
                 .id(userId)
                 .fullName(request.fullName().trim())
                 .phoneNumber(cleanPhone)
                 .email(request.email() != null ? request.email().trim() : "")
-                .password(request.password())
+                .password(hashedPassword)
                 .role(request.role() != null && !request.role().isBlank() ? request.role().toUpperCase() : "CUSTOMER")
                 .accountNumber(accNum)
                 .customerId(customerId)
@@ -195,17 +218,33 @@ public class AccountController {
     }
 
     @PostMapping("/auth/login")
-    @Operation(summary = "User Login", description = "Authenticates user. Returns 403 Forbidden if account is PENDING_APPROVAL or SUSPENDED.")
+    @Operation(summary = "User Login", description = "Authenticates user using BCrypt salted hash verification. Returns 403 Forbidden if account is PENDING_APPROVAL or SUSPENDED.")
     public ResponseEntity<ApiResponse<UserAccountDto>> login(@RequestBody LoginRequest request) {
         String idStr = request.identifier().trim();
         Optional<UserAccountEntity> userOpt = findUserByIdentifier(idStr);
 
-        if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(request.password())) {
+        if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ApiResponse.error("INVALID_CREDENTIALS", "Invalid phone number, account number, or password"));
         }
 
         UserAccountEntity user = userOpt.get();
+        boolean passwordMatches = false;
+
+        if (isBcryptHash(user.getPassword())) {
+            passwordMatches = passwordEncoder.matches(request.password(), user.getPassword());
+        } else {
+            if (user.getPassword().equals(request.password())) {
+                passwordMatches = true;
+                user.setPassword(passwordEncoder.encode(request.password()));
+                repository.save(user);
+            }
+        }
+
+        if (!passwordMatches) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("INVALID_CREDENTIALS", "Invalid phone number, account number, or password"));
+        }
 
         if ("PENDING_APPROVAL".equalsIgnoreCase(user.getStatus())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -224,6 +263,59 @@ public class AccountController {
         }
 
         return ResponseEntity.ok(ApiResponse.ok("Login successful", UserAccountDto.fromEntity(user)));
+    }
+
+    @PostMapping("/auth/change-password")
+    @Operation(summary = "Change Password", description = "Securely changes user password by verifying the current password and saving the new password as a salted BCrypt hash.")
+    public ResponseEntity<ApiResponse<UserAccountDto>> changePassword(@RequestBody ChangePasswordRequest request) {
+        if (request.oldPassword() == null || request.oldPassword().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("INVALID_CURRENT_PASSWORD", "Current password must be provided"));
+        }
+        if (request.newPassword() == null || request.newPassword().trim().length() < 6) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("INVALID_NEW_PASSWORD", "New password must be at least 6 characters long"));
+        }
+
+        Optional<UserAccountEntity> userOpt = Optional.empty();
+        if (request.userId() != null) {
+            userOpt = repository.findById(request.userId());
+        }
+        if (userOpt.isEmpty() && request.identifier() != null && !request.identifier().isBlank()) {
+            userOpt = findUserByIdentifier(request.identifier().trim());
+        }
+
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("USER_NOT_FOUND", "User account not found"));
+        }
+
+        UserAccountEntity user = userOpt.get();
+
+        boolean oldMatches = false;
+        if (isBcryptHash(user.getPassword())) {
+            oldMatches = passwordEncoder.matches(request.oldPassword(), user.getPassword());
+        } else {
+            oldMatches = user.getPassword().equals(request.oldPassword());
+        }
+
+        if (!oldMatches) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("CURRENT_PASSWORD_MISMATCH", "Current password does not match our records"));
+        }
+
+        String trimmedNewPassword = request.newPassword().trim();
+        if ((isBcryptHash(user.getPassword()) && passwordEncoder.matches(trimmedNewPassword, user.getPassword()))
+                || user.getPassword().equals(trimmedNewPassword)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("SAME_PASSWORD", "New password cannot be the same as the current password"));
+        }
+
+        String newHashedPassword = passwordEncoder.encode(trimmedNewPassword);
+        user.setPassword(newHashedPassword);
+        UserAccountEntity saved = repository.save(user);
+
+        return ResponseEntity.ok(ApiResponse.ok("Password successfully updated and securely hashed.", UserAccountDto.fromEntity(saved)));
     }
 
     @GetMapping("/accounts")

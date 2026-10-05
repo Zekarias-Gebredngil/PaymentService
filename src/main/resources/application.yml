@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8086
 
 spring:
@@ -6,9 +6,9 @@ spring:
     name: payment-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
-    username: ${SPRING_DATASOURCE_USERNAME:myuser}
-    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nadipayment-db}
+    username: ${SPRING_DATASOURCE_USERNAME:nadi}
+    password: ${SPRING_DATASOURCE_PASSWORD:nadi}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 20000
@@ -46,11 +46,11 @@ payment:
     telebirr:
       enabled: true
       base-url: ${TELEBIRR_BASE_URL:https://app.ethiomobilemoney.et:2121}
-      app-id: ${TELEBIRR_APP_ID:telebirr_mock_app_id}
-      app-key: ${TELEBIRR_APP_KEY:telebirr_mock_app_key}
-      short-code: ${TELEBIRR_SHORT_CODE:10011}
-      public-key: ${TELEBIRR_PUBLIC_KEY:MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC61VlWq1x}
-      private-key: ${TELEBIRR_PRIVATE_KEY:MIICXAIBAAKCAQEA0wJ7}
+      app-id: ${TELEBIRR_APP_ID:}
+      app-key: ${TELEBIRR_APP_KEY:}
+      short-code: ${TELEBIRR_SHORT_CODE:}
+      public-key: ${TELEBIRR_PUBLIC_KEY:}
+      private-key: ${TELEBIRR_PRIVATE_KEY:}
       callback-url: ${TELEBIRR_CALLBACK_URL:http://localhost:8080/api/v1/payment-providers/telebirr/callback}
       return-url: ${TELEBIRR_RETURN_URL:http://localhost:8080/api/v1/payments/return}
       timeout-seconds: 15

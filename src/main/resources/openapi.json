@@ -716,7 +716,7 @@
           "identifier": {
             "type": "string",
             "description": "Mobile number, card token, or wallet identifier",
-            "example": "0911223344"
+            "example": "0912345678"
           }
         }
       },
@@ -725,7 +725,7 @@
         "properties": {
           "msisdn": {
             "type": "string",
-            "example": "0911223344"
+            "example": "0912345678"
           },
           "outTradeNo": {
             "type": "string",

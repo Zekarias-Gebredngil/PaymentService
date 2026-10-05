@@ -1,4 +1,4 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
   title: Nadi Payment Service API
   description: |
@@ -526,14 +526,14 @@ components:
         identifier:
           type: string
           description: Mobile number, card token, or wallet identifier
-          example: '0911223344'
+          example: '0912345678'
 
     TelebirrCallbackPayload:
       type: object
       properties:
         msisdn:
           type: string
-          example: '0911223344'
+          example: '0912345678'
         outTradeNo:
           type: string
           example: TOP-20260925-9B7E90
