@@ -35,7 +35,7 @@ public class SpringEventPublisher implements EventPublisher {
             log.info("[EVENT_BUS] Publishing event: {}", event.getEventType());
         }
 
-        // Publish to in-process listeners (e.g. notifications, reporting, audits)
+        // Publish to in-process listeners and Kafka bridge (KafkaPaymentEventListener)
         applicationEventPublisher.publishEvent(event);
     }
 }

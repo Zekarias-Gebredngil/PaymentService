@@ -1,4 +1,4 @@
-﻿server:
+server:
   port: 8086
 
 spring:
@@ -26,6 +26,39 @@ spring:
     compose:
       enabled: true
       lifecycle-management: start-and-stop
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:payment-service-group}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "com.payment.nadi.*,java.util,java.lang"
+    admin:
+      fail-on-create-error: false
+      auto-create: true
+
+kafka:
+  topics:
+    payment-completed: ${KAFKA_TOPIC_PAYMENT_COMPLETED:payment.completed}
+    payment-failed: ${KAFKA_TOPIC_PAYMENT_FAILED:payment.failed}
+    payment-initiated: ${KAFKA_TOPIC_PAYMENT_INITIATED:payment.initiated}
+    transfer-completed: ${KAFKA_TOPIC_TRANSFER_COMPLETED:payment.transfer-completed}
+    all-events: ${KAFKA_TOPIC_ALL_EVENTS:payment.events}
+    partitions: ${KAFKA_TOPIC_PARTITIONS:3}
+    replication-factor: ${KAFKA_TOPIC_REPLICATION_FACTOR:1}
+  consumer:
+    enabled: ${KAFKA_CONSUMER_ENABLED:true}
 
 springdoc:
   api-docs:
@@ -61,3 +94,4 @@ logging:
     com.payment.nadi: DEBUG
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
+    org.apache.kafka: INFO

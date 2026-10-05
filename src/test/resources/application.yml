@@ -14,6 +14,12 @@ spring:
     compose:
       enabled: false
 
+kafka:
+  consumer:
+    enabled: false
+  admin:
+    auto-create: false
+
 payment:
   default-currency: ETB
   idempotency:
