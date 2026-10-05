@@ -37,6 +37,7 @@ public class DefaultWalletService implements WalletService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public boolean hasSufficientBalance(UUID accountId, Money amount) {
         Objects.requireNonNull(accountId, "Account ID cannot be null");
         Objects.requireNonNull(amount, "Amount cannot be null");
@@ -75,6 +76,7 @@ public class DefaultWalletService implements WalletService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Money getBalance(UUID accountId, String currencyCode) {
         BigDecimal balance = ledgerRepository.calculateBalance(accountId);
         return Money.of(balance != null ? balance : BigDecimal.ZERO, currencyCode);

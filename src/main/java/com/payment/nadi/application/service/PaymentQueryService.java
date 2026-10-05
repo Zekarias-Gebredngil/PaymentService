@@ -48,6 +48,7 @@ public class PaymentQueryService implements PaymentQueryUseCase {
     }
 
     @Override
+    @org.springframework.cache.annotation.Cacheable(value = "payments", key = "#paymentId", unless = "#result == null || !#result.status().isTerminal()")
     public PaymentResponse getPaymentById(UUID paymentId) {
         return paymentRepository.findById(paymentId)
                 .map(PaymentResponse::from)
@@ -77,6 +78,7 @@ public class PaymentQueryService implements PaymentQueryUseCase {
 
     @Override
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "payments", key = "#paymentId")
     public PaymentResponse refreshPaymentStatus(UUID paymentId) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new PaymentNotFoundException(paymentId));

@@ -6,8 +6,13 @@ import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAcco
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.PostConstruct;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,23 +50,23 @@ public class AccountController {
     }
 
     public record RegisterRequest(
-            @NotBlank String fullName,
-            @NotBlank String phoneNumber,
-            String email,
-            @NotBlank String password,
+            @NotBlank(message = "Full name is required") String fullName,
+            @NotBlank(message = "Phone number is required") String phoneNumber,
+            @Email(message = "Invalid email format") String email,
+            @NotBlank(message = "Password is required") @Size(min = 6, message = "Password must be at least 6 characters") String password,
             String role
     ) {}
 
     public record LoginRequest(
-            @NotBlank String identifier,
-            @NotBlank String password
+            @NotBlank(message = "Identifier (phone or account number) is required") String identifier,
+            @NotBlank(message = "Password is required") String password
     ) {}
 
     public record ChangePasswordRequest(
             UUID userId,
             String identifier,
-            @NotBlank String oldPassword,
-            @NotBlank String newPassword
+            @NotBlank(message = "Current password is required") String oldPassword,
+            @NotBlank(message = "New password is required") @Size(min = 6, message = "New password must be at least 6 characters") String newPassword
     ) {}
 
     public record UserAccountDto(
@@ -176,7 +181,7 @@ public class AccountController {
 
     @PostMapping("/auth/register")
     @Operation(summary = "Register User Account", description = "Registers a new user with salted hashed credentials and an 8-digit numeric account number starting with 0.")
-    public ResponseEntity<ApiResponse<UserAccountDto>> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<UserAccountDto>> register(@Valid @RequestBody RegisterRequest request) {
         String cleanPhone = request.phoneNumber().trim();
         if (repository.existsByPhoneNumber(cleanPhone)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -219,7 +224,7 @@ public class AccountController {
 
     @PostMapping("/auth/login")
     @Operation(summary = "User Login", description = "Authenticates user using BCrypt salted hash verification. Returns 403 Forbidden if account is PENDING_APPROVAL or SUSPENDED.")
-    public ResponseEntity<ApiResponse<UserAccountDto>> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<UserAccountDto>> login(@Valid @RequestBody LoginRequest request) {
         String idStr = request.identifier().trim();
         Optional<UserAccountEntity> userOpt = findUserByIdentifier(idStr);
 
@@ -267,7 +272,7 @@ public class AccountController {
 
     @PostMapping("/auth/change-password")
     @Operation(summary = "Change Password", description = "Securely changes user password by verifying the current password and saving the new password as a salted BCrypt hash.")
-    public ResponseEntity<ApiResponse<UserAccountDto>> changePassword(@RequestBody ChangePasswordRequest request) {
+    public ResponseEntity<ApiResponse<UserAccountDto>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         if (request.oldPassword() == null || request.oldPassword().isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(ApiResponse.error("INVALID_CURRENT_PASSWORD", "Current password must be provided"));
@@ -334,6 +339,7 @@ public class AccountController {
     }
 
     @GetMapping("/accounts/lookup")
+    @Cacheable(value = "account-lookups", key = "#query")
     @Operation(summary = "Lookup Active Account", description = "Looks up an active recipient account by phone number or account number for transfers.")
     public ResponseEntity<ApiResponse<UserAccountDto>> lookupAccount(@RequestParam String query) {
         Optional<UserAccountEntity> userOpt = findUserByIdentifier(query.trim());
@@ -350,6 +356,7 @@ public class AccountController {
     }
 
     @PatchMapping("/accounts/{id}/approve")
+    @CacheEvict(value = "account-lookups", allEntries = true)
     @Operation(summary = "Admin Approve Account", description = "Approves a pending account and activates it for transactions.")
     public ResponseEntity<ApiResponse<UserAccountDto>> approveAccount(@PathVariable UUID id) {
         Optional<UserAccountEntity> userOpt = repository.findById(id);
@@ -366,6 +373,7 @@ public class AccountController {
     }
 
     @PatchMapping("/accounts/{id}/suspend")
+    @CacheEvict(value = "account-lookups", allEntries = true)
     @Operation(summary = "Admin Suspend Account", description = "Suspends an active account.")
     public ResponseEntity<ApiResponse<UserAccountDto>> suspendAccount(@PathVariable UUID id) {
         Optional<UserAccountEntity> userOpt = repository.findById(id);
@@ -380,6 +388,7 @@ public class AccountController {
     }
 
     @PatchMapping("/accounts/{id}/activate")
+    @CacheEvict(value = "account-lookups", allEntries = true)
     @Operation(summary = "Admin Activate Account", description = "Reactivates a suspended account.")
     public ResponseEntity<ApiResponse<UserAccountDto>> activateAccount(@PathVariable UUID id) {
         Optional<UserAccountEntity> userOpt = repository.findById(id);
