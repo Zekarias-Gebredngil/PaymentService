@@ -23,7 +23,11 @@ ALTER TABLE user_accounts
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_bio_device ON user_accounts(biometric_device_id);
 
--- 2. Create notifications table for audit history of SMS and Push alerts
+
+ALTER TABLE payments
+    ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
+
+-- 3. Create notifications table for audit history of SMS and Push alerts
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID,
