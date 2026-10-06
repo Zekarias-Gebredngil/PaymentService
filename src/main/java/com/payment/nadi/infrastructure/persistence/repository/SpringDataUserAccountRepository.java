@@ -1,9 +1,11 @@
 package com.payment.nadi.infrastructure.persistence.repository;
 
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -22,6 +24,17 @@ public interface SpringDataUserAccountRepository extends JpaRepository<UserAccou
     Optional<UserAccountEntity> findByCustomerId(UUID customerId);
 
     Optional<UserAccountEntity> findBySourceAccountId(UUID sourceAccountId);
+
+    Optional<UserAccountEntity> findByBiometricDeviceId(String biometricDeviceId);
+
+    // Strict ACID Isolation: Pessimistic write lock on account row to prevent concurrent race conditions
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM UserAccountEntity u WHERE u.id = :id")
+    Optional<UserAccountEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM UserAccountEntity u WHERE u.sourceAccountId = :sourceAccountId")
+    Optional<UserAccountEntity> findBySourceAccountIdForUpdate(@Param("sourceAccountId") UUID sourceAccountId);
 
     List<UserAccountEntity> findAllByOrderByCreatedAtDesc();
 

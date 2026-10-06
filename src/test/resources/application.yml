@@ -15,12 +15,22 @@ spring:
   docker:
     compose:
       enabled: false
+  kafka:
+    listener:
+      auto-startup: false
+  data:
+    redis:
+      repositories:
+        enabled: false
 
 kafka:
   consumer:
     enabled: false
   admin:
     auto-create: false
+
+loki:
+  enabled: false
 
 payment:
   default-currency: ETB

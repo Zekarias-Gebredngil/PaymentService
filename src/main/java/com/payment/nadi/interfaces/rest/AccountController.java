@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.interfaces.rest;
+package com.payment.nadi.interfaces.rest;
 
 import com.payment.nadi.application.dto.response.PageResponse;
 import org.springframework.data.domain.Page;
@@ -31,6 +31,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.payment.nadi.application.port.out.EventPublisher;
+import com.payment.nadi.domain.event.UserSecurityEvent;
+
 @RestController
 @RequestMapping("/api/v1")
 @Tag(name = "Account & User Management", description = "Dynamic User Registration, Admin Approval, and Authentication")
@@ -38,6 +41,7 @@ public class AccountController {
 
     private final SpringDataUserAccountRepository repository;
     private final PasswordEncoder passwordEncoder;
+    private final EventPublisher eventPublisher;
 
     @Value("${app.seed.admin.phone:${ADMIN_PHONE:}}")
     private String seedAdminPhone;
@@ -51,9 +55,10 @@ public class AccountController {
     @Value("${app.seed.admin.email:${ADMIN_EMAIL:}}")
     private String seedAdminEmail;
 
-    public AccountController(SpringDataUserAccountRepository repository, PasswordEncoder passwordEncoder) {
+    public AccountController(SpringDataUserAccountRepository repository, PasswordEncoder passwordEncoder, EventPublisher eventPublisher) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
+        this.eventPublisher = eventPublisher;
     }
 
     public record AdminCreateAccountRequest(
@@ -97,7 +102,12 @@ public class AccountController {
             String status,
             Instant createdAt,
             Instant approvedAt,
-            String approvedBy
+            String approvedBy,
+            Boolean twoFactorEnabled,
+            String twoFactorType,
+            Boolean biometricEnabled,
+            Boolean smsNotificationsEnabled,
+            Boolean pushNotificationsEnabled
     ) {
         public static UserAccountDto fromEntity(UserAccountEntity e) {
             return new UserAccountDto(
@@ -112,7 +122,12 @@ public class AccountController {
                     e.getStatus(),
                     e.getCreatedAt(),
                     e.getApprovedAt(),
-                    e.getApprovedBy()
+                    e.getApprovedBy(),
+                    e.getTwoFactorEnabled(),
+                    e.getTwoFactorType(),
+                    e.getBiometricEnabled(),
+                    e.getSmsNotificationsEnabled(),
+                    e.getPushNotificationsEnabled()
             );
         }
     }
@@ -283,6 +298,20 @@ public class AccountController {
                     .body(ApiResponse.error("ACCOUNT_LOCKED", "Your account has been suspended or rejected. Please contact administrator."));
         }
 
+        if (Boolean.TRUE.equals(user.getTwoFactorEnabled())) {
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true,
+                    "Two-factor authentication required. Please verify with your 6-digit code via /api/v1/auth/2fa/verify.",
+                    UserAccountDto.fromEntity(user),
+                    "2FA_REQUIRED",
+                    Instant.now()
+            ));
+        }
+
+        eventPublisher.publish(UserSecurityEvent.now(
+                user.getId(), user.getPhoneNumber(), "LOGIN", "Successful login"
+        ));
+
         return ResponseEntity.ok(ApiResponse.ok("Login successful", UserAccountDto.fromEntity(user)));
     }
 
@@ -335,6 +364,10 @@ public class AccountController {
         String newHashedPassword = passwordEncoder.encode(trimmedNewPassword);
         user.setPassword(newHashedPassword);
         UserAccountEntity saved = repository.save(user);
+
+        eventPublisher.publish(UserSecurityEvent.now(
+                user.getId(), user.getPhoneNumber(), "PASSWORD_CHANGE", "Password successfully changed"
+        ));
 
         return ResponseEntity.ok(ApiResponse.ok("Password successfully updated and securely hashed.", UserAccountDto.fromEntity(saved)));
     }

@@ -23,6 +23,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import jakarta.persistence.Version;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -94,6 +95,11 @@ public class PaymentEntity {
     @Column(name = "meta_value", length = 512)
     @Builder.Default
     private Map<String, String> metadata = new HashMap<>();
+
+    @Version
+    @Column(name = "version")
+    @Builder.Default
+    private Long version = 0L;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
