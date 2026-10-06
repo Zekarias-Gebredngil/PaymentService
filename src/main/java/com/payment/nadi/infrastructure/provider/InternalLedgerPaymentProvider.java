@@ -5,7 +5,6 @@ import com.payment.nadi.application.port.out.dto.PaymentInitiationResult;
 import com.payment.nadi.application.port.out.dto.PaymentProviderRequest;
 import com.payment.nadi.application.port.out.dto.PaymentStatusResult;
 import com.payment.nadi.domain.model.PaymentProviderType;
-import com.payment.nadi.domain.model.PaymentStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;

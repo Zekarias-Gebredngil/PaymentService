@@ -116,6 +116,7 @@ public class KafkaConfig {
     // ==========================================
 
     @Bean
+    @SuppressWarnings({"deprecation", "removal"})
     public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
@@ -140,6 +141,7 @@ public class KafkaConfig {
     // ==========================================
 
     @Bean
+    @SuppressWarnings({"deprecation", "removal"})
     public ConsumerFactory<String, Object> consumerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);

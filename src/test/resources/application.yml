@@ -42,4 +42,4 @@ payment:
 logging:
   level:
     root: WARN
-    com.payment.nadi: INFO
+    "[com.payment.nadi]": INFO

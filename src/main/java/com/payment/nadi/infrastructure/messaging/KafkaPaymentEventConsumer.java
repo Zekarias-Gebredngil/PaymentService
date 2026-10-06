@@ -4,7 +4,6 @@ import com.payment.nadi.domain.event.PaymentCompletedEvent;
 import com.payment.nadi.domain.event.PaymentFailedEvent;
 import com.payment.nadi.domain.event.PaymentInitiatedEvent;
 import com.payment.nadi.domain.event.TransferCompletedEvent;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

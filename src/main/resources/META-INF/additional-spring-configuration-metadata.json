@@ -1,0 +1,39 @@
+{
+  "groups": [
+    {
+      "name": "kafka",
+      "type": "java.lang.Object",
+      "description": "Custom Kafka configuration settings."
+    },
+    {
+      "name": "kafka.consumer",
+      "type": "java.lang.Object",
+      "description": "Kafka consumer configuration."
+    },
+    {
+      "name": "kafka.admin",
+      "type": "java.lang.Object",
+      "description": "Kafka admin configuration."
+    },
+    {
+      "name": "payment",
+      "type": "com.payment.nadi.infrastructure.configuration.PaymentProperties",
+      "sourceType": "com.payment.nadi.infrastructure.configuration.PaymentProperties",
+      "description": "Payment service configuration."
+    }
+  ],
+  "properties": [
+    {
+      "name": "kafka.consumer.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether the Kafka payment event consumer is enabled.",
+      "defaultValue": true
+    },
+    {
+      "name": "kafka.admin.auto-create",
+      "type": "java.lang.Boolean",
+      "description": "Whether to automatically create Kafka topics.",
+      "defaultValue": true
+    }
+  ]
+}

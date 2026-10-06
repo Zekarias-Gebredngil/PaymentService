@@ -1,7 +1,6 @@
 package com.payment.nadi.infrastructure.wallet;
 
 import com.payment.nadi.application.port.out.WalletService;
-import com.payment.nadi.domain.exception.InsufficientBalanceException;
 import com.payment.nadi.domain.model.LedgerEntry;
 import com.payment.nadi.domain.model.Money;
 import com.payment.nadi.domain.repository.LedgerRepository;
