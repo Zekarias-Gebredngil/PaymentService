@@ -31,6 +31,7 @@ public class Payment {
     private String failureReason;
     private Instant createdAt;
     private Instant updatedAt;
+    private Long version;
 
     public Payment() {
         this.metadata = new HashMap<>();
@@ -162,4 +163,7 @@ public class Payment {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 }

@@ -11,6 +11,7 @@ import com.payment.nadi.infrastructure.persistence.entity.PaymentEntity;
 import com.payment.nadi.infrastructure.persistence.entity.TransactionEntity;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.HashMap;
 
 @Component
@@ -34,6 +35,7 @@ public class PaymentPersistenceMapper {
                 .description(domain.getDescription())
                 .failureReason(domain.getFailureReason())
                 .metadata(domain.getMetadata() != null ? new HashMap<>(domain.getMetadata()) : new HashMap<>())
+                .version(domain.getVersion())
                 .createdAt(domain.getCreatedAt())
                 .updatedAt(domain.getUpdatedAt())
                 .build();
@@ -56,9 +58,31 @@ public class PaymentPersistenceMapper {
         payment.setDescription(entity.getDescription());
         payment.setFailureReason(entity.getFailureReason());
         payment.setMetadata(entity.getMetadata());
+        payment.setVersion(entity.getVersion());
         payment.setCreatedAt(entity.getCreatedAt());
         payment.setUpdatedAt(entity.getUpdatedAt());
         return payment;
+    }
+
+    public void updateEntity(PaymentEntity target, Payment source) {
+        if (target == null || source == null) return;
+        target.setReference(source.getReference());
+        target.setType(source.getType());
+        target.setStatus(source.getStatus());
+        if (source.getAmount() != null) {
+            target.setAmount(source.getAmount().amount());
+            target.setCurrency(source.getAmount().getCurrencyCode());
+        }
+        target.setCustomerId(source.getCustomerId());
+        target.setSourceAccountId(source.getSourceAccountId());
+        target.setDestinationAccountId(source.getDestinationAccountId());
+        target.setProvider(source.getProvider());
+        target.setProviderReference(source.getProviderReference());
+        target.setSourceSystem(source.getSourceSystem());
+        target.setDescription(source.getDescription());
+        target.setFailureReason(source.getFailureReason());
+        target.setMetadata(source.getMetadata() != null ? new HashMap<>(source.getMetadata()) : new HashMap<>());
+        target.setUpdatedAt(source.getUpdatedAt() != null ? source.getUpdatedAt() : Instant.now());
     }
 
     public TransactionEntity toEntity(Transaction domain) {

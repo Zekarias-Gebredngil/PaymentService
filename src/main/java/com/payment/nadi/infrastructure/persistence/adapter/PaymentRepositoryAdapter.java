@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
 @Component
 public class PaymentRepositoryAdapter implements PaymentRepository {
 
@@ -26,6 +28,18 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 
     @Override
     public Payment save(Payment payment) {
+        if (payment.getId() != null) {
+            Optional<PaymentEntity> existingOpt = repository.findById(payment.getId());
+            if (existingOpt.isPresent()) {
+                PaymentEntity existing = existingOpt.get();
+                if (payment.getVersion() != null && !payment.getVersion().equals(existing.getVersion())) {
+                    throw new ObjectOptimisticLockingFailureException(PaymentEntity.class, payment.getId());
+                }
+                mapper.updateEntity(existing, payment);
+                PaymentEntity saved = repository.save(existing);
+                return mapper.toDomain(saved);
+            }
+        }
         PaymentEntity entity = mapper.toEntity(payment);
         PaymentEntity saved = repository.save(entity);
         return mapper.toDomain(saved);

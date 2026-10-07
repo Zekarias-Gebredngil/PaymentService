@@ -76,6 +76,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("FORBIDDEN", "Access denied: You do not have permission to execute this operation."));
     }
 
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLocking(org.springframework.dao.OptimisticLockingFailureException ex) {
+        log.warn("Optimistic locking conflict detected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("OPTIMISTIC_LOCK_CONFLICT", "The resource was concurrently modified by another transaction. Please retry."));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex) {
         log.error("Unhandled internal server error: {}", ex.getMessage(), ex);

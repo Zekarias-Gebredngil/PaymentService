@@ -138,12 +138,10 @@ public class AccountController {
     }
 
     private boolean isNumericAccountNumber(String accNum) {
-        // Enforces pattern like 00564829: only numbers, no characters, starting with 0, 8 digits long
         return accNum != null && accNum.matches("^0\\d{7}$");
     }
 
     private String generateNumericAccountNumber() {
-        // Generates an 8-digit numeric account number starting with 0 (e.g. 00564829)
         String accNum;
         do {
             int randomPart = ThreadLocalRandom.current().nextInt(1_000_000);
@@ -164,7 +162,6 @@ public class AccountController {
 
     @PostConstruct
     public void onStartup() {
-        // Optional environment-configured initial administrator seed (no hardcoded credentials)
         if (seedAdminPhone != null && !seedAdminPhone.isBlank() &&
             seedAdminPassword != null && !seedAdminPassword.isBlank()) {
             String cleanPhone = seedAdminPhone.trim();
@@ -192,7 +189,6 @@ public class AccountController {
             }
         }
 
-        // Ensure all stored account numbers and passwords adhere to required patterns
         List<UserAccountEntity> allUsers = repository.findAll();
         for (UserAccountEntity u : allUsers) {
             boolean changed = false;
@@ -228,10 +224,8 @@ public class AccountController {
         UUID customerId = UUID.randomUUID();
         UUID sourceAccountId = UUID.randomUUID();
         
-        // 8-digit numeric account number starting with 0 (e.g. 00564829)
         String accNum = generateNumericAccountNumber();
 
-        // Salt and hash password with BCrypt
         String hashedPassword = passwordEncoder.encode(request.password().trim());
 
         UserAccountEntity entity = UserAccountEntity.builder()
