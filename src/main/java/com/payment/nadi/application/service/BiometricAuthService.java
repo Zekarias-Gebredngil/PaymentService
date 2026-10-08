@@ -72,6 +72,10 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         UserAccountEntity user = findUser(request.identifier())
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + request.identifier()));
 
+        if (!"ACTIVE".equalsIgnoreCase(user.getStatus())) {
+            throw new InvalidPaymentException("Account status is " + user.getStatus() + ". Biometric enrollment not permitted.");
+        }
+
         // 1. Consume and validate challenge freshness (anti-replay)
         boolean challengeValid = biometricService.consumeChallenge(request.challenge(), request.identifier());
         if (!challengeValid) {
@@ -86,7 +90,20 @@ public class BiometricAuthService implements BiometricAuthUseCase {
 
         // 3. Register credentials
         user.setBiometricEnabled(true);
-        user.setBiometricPublicKey(request.publicKey().trim());
+        String newKey = request.publicKey().trim();
+        String currentKeys = user.getBiometricPublicKey();
+        if (currentKeys == null || currentKeys.isBlank()) {
+            user.setBiometricPublicKey(newKey);
+        } else {
+            java.util.List<String> keyList = new java.util.ArrayList<>(java.util.Arrays.asList(currentKeys.split(",")));
+            if (!keyList.contains(newKey)) {
+                keyList.add(newKey);
+            }
+            while (keyList.size() > 5) {
+                keyList.remove(0);
+            }
+            user.setBiometricPublicKey(String.join(",", keyList));
+        }
         user.setBiometricDeviceId(request.deviceId() != null ? request.deviceId().trim() : UUID.randomUUID().toString());
         user.setBiometricDeviceName(request.deviceName() != null ? request.deviceName().trim() : "Biometric Sensor");
         user.setBiometricRegisteredAt(Instant.now());
@@ -126,7 +143,10 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         }
 
         // 2. Validate cryptographic signature
-        boolean sigValid = biometricService.verifySignature(user.getBiometricPublicKey(), request.challenge(), request.signature());
+        boolean sigValid = java.util.Arrays.stream(user.getBiometricPublicKey().split("[,;\n]"))
+                .map(String::trim)
+                .filter(k -> !k.isBlank())
+                .anyMatch(key -> biometricService.verifySignature(key, request.challenge(), request.signature()));
         if (!sigValid) {
             throw new InvalidPaymentException("Biometric authentication failed: digital signature did not match enrolled public key.");
         }
@@ -165,5 +185,11 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         return findUser(identifier)
                 .map(u -> Boolean.TRUE.equals(u.getBiometricEnabled()))
                 .orElse(false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserAccountEntity> getUserStatusForBiometric(String identifier) {
+        return findUser(identifier);
     }
 }

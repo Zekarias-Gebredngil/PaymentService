@@ -17,4 +17,6 @@ public interface BiometricAuthUseCase {
     UserAccountEntity disableBiometric(String identifier);
 
     boolean isBiometricEnabled(String identifier);
+
+    java.util.Optional<UserAccountEntity> getUserStatusForBiometric(String identifier);
 }

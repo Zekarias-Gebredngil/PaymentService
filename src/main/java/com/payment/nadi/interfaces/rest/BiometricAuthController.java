@@ -56,12 +56,29 @@ public class BiometricAuthController {
     }
 
     @GetMapping("/status")
-    @Operation(summary = "Check Biometric Status", description = "Returns whether the specified account has biometric authentication enrolled.")
+    @Operation(summary = "Check Biometric Status", description = "Returns whether the specified account has biometric authentication enrolled and account status.")
     public ResponseEntity<ApiResponse<Map<String, Object>>> status(@RequestParam String identifier) {
-        boolean enabled = biometricAuthUseCase.isBiometricEnabled(identifier);
+        java.util.Optional<UserAccountEntity> userOpt = biometricAuthUseCase.getUserStatusForBiometric(identifier);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                    "identifier", identifier,
+                    "biometricEnabled", false,
+                    "accountStatus", "NOT_FOUND",
+                    "isBlocked", true
+            )));
+        }
+        UserAccountEntity user = userOpt.get();
+        boolean enabled = Boolean.TRUE.equals(user.getBiometricEnabled());
+        String status = user.getStatus() != null ? user.getStatus() : "ACTIVE";
+        boolean blocked = !"ACTIVE".equalsIgnoreCase(status);
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
                 "identifier", identifier,
-                "biometricEnabled", enabled
+                "fullName", user.getFullName() != null ? user.getFullName() : "",
+                "accountNumber", user.getAccountNumber() != null ? user.getAccountNumber() : "",
+                "phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
+                "biometricEnabled", enabled,
+                "accountStatus", status,
+                "isBlocked", blocked
         )));
     }
 }
