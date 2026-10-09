@@ -18,10 +18,6 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Enterprise event listener that dispatches SMS and Push notifications
- * in response to domain events and financial transactions.
- */
 @Component
 public class NotificationEventListener {
 
@@ -34,13 +30,13 @@ public class NotificationEventListener {
     public NotificationEventListener(
             SmsAlertPort smsAlertPort,
             PushNotificationPort pushNotificationPort,
-            SpringDataUserAccountRepository userAccountRepository
-    ) {
+            SpringDataUserAccountRepository userAccountRepository) {
         this.smsAlertPort = smsAlertPort;
         this.pushNotificationPort = pushNotificationPort;
         this.userAccountRepository = userAccountRepository;
     }
 
+    @Async
     @EventListener
     public void onTransferCompleted(TransferCompletedEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing transfer alerts for ref: {}", event.reference());
@@ -50,10 +46,12 @@ public class NotificationEventListener {
                 .or(() -> userAccountRepository.findById(event.sourceAccountId()));
 
         // 2. Alert Recipient (Credit)
-        Optional<UserAccountEntity> recipientOpt = userAccountRepository.findBySourceAccountId(event.destinationAccountId())
+        Optional<UserAccountEntity> recipientOpt = userAccountRepository
+                .findBySourceAccountId(event.destinationAccountId())
                 .or(() -> userAccountRepository.findById(event.destinationAccountId()));
 
-        String recipientInfo = recipientOpt.map(u -> u.getFullName() + " (" + maskAccountNumber(u.getAccountNumber()) + ")")
+        String recipientInfo = recipientOpt
+                .map(u -> u.getFullName() + " (" + maskAccountNumber(u.getAccountNumber()) + ")")
                 .orElse("account " + event.destinationAccountId());
         String senderInfo = senderOpt.map(u -> u.getFullName() + " (" + maskAccountNumber(u.getAccountNumber()) + ")")
                 .orElse("account " + event.sourceAccountId());
@@ -64,12 +62,14 @@ public class NotificationEventListener {
                     event.amount().amount(), event.amount().currency(), recipientInfo, event.reference());
 
             if (Boolean.TRUE.equals(sender.getSmsNotificationsEnabled())) {
-                smsAlertPort.sendSms(sender.getId(), sender.getPhoneNumber(), debitMsg, NotificationType.TRANSACTION_DEBIT, event.reference());
+                smsAlertPort.sendSms(sender.getId(), sender.getPhoneNumber(), debitMsg,
+                        NotificationType.TRANSACTION_DEBIT, event.reference());
             }
             if (Boolean.TRUE.equals(sender.getPushNotificationsEnabled()) && sender.getPushToken() != null) {
                 pushNotificationPort.sendPush(sender.getId(), sender.getPushToken(), "Transfer Sent", debitMsg,
                         NotificationType.TRANSACTION_DEBIT, event.reference(),
-                        Map.of("reference", event.reference(), "type", "DEBIT", "amount", event.amount().amount().toString()));
+                        Map.of("reference", event.reference(), "type", "DEBIT", "amount",
+                                event.amount().amount().toString()));
             }
         }
 
@@ -79,16 +79,20 @@ public class NotificationEventListener {
                     event.amount().amount(), event.amount().currency(), senderInfo, event.reference());
 
             if (Boolean.TRUE.equals(recipient.getSmsNotificationsEnabled())) {
-                smsAlertPort.sendSms(recipient.getId(), recipient.getPhoneNumber(), creditMsg, NotificationType.TRANSACTION_CREDIT, event.reference());
+                smsAlertPort.sendSms(recipient.getId(), recipient.getPhoneNumber(), creditMsg,
+                        NotificationType.TRANSACTION_CREDIT, event.reference());
             }
             if (Boolean.TRUE.equals(recipient.getPushNotificationsEnabled()) && recipient.getPushToken() != null) {
-                pushNotificationPort.sendPush(recipient.getId(), recipient.getPushToken(), "Transfer Received", creditMsg,
+                pushNotificationPort.sendPush(recipient.getId(), recipient.getPushToken(), "Transfer Received",
+                        creditMsg,
                         NotificationType.TRANSACTION_CREDIT, event.reference(),
-                        Map.of("reference", event.reference(), "type", "CREDIT", "amount", event.amount().amount().toString()));
+                        Map.of("reference", event.reference(), "type", "CREDIT", "amount",
+                                event.amount().amount().toString()));
             }
         }
     }
 
+    @Async
     @EventListener
     public void onPaymentCompleted(PaymentCompletedEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing payment completion alert for ref: {}", event.reference());
@@ -101,7 +105,8 @@ public class NotificationEventListener {
 
         if (userOpt.isPresent()) {
             UserAccountEntity user = userOpt.get();
-            String title = (event.paymentType() != null) ? event.paymentType().name() + " Successful" : "Payment Completed";
+            String title = (event.paymentType() != null) ? event.paymentType().name() + " Successful"
+                    : "Payment Completed";
             String msg = String.format("Nadi Pay: Your %s of %s %s was completed successfully. Ref: %s.",
                     event.paymentType(), event.amount().amount(), event.amount().currency(), event.reference());
 
@@ -115,12 +120,14 @@ public class NotificationEventListener {
                 smsAlertPort.sendSms(user.getId(), user.getPhoneNumber(), msg, notifType, event.reference());
             }
             if (Boolean.TRUE.equals(user.getPushNotificationsEnabled()) && user.getPushToken() != null) {
-                pushNotificationPort.sendPush(user.getId(), user.getPushToken(), title, msg, notifType, event.reference(),
+                pushNotificationPort.sendPush(user.getId(), user.getPushToken(), title, msg, notifType,
+                        event.reference(),
                         Map.of("reference", event.reference(), "amount", event.amount().amount().toString()));
             }
         }
     }
 
+    @Async
     @EventListener
     public void onPaymentFailed(PaymentFailedEvent event) {
         log.warn("[NOTIFICATION_LISTENER] Processing payment failed alert for ref: {}", event.reference());
@@ -134,10 +141,12 @@ public class NotificationEventListener {
         if (userOpt.isPresent()) {
             UserAccountEntity user = userOpt.get();
             String msg = String.format("Nadi Pay Alert: Your %s of %s %s failed. Reason: %s. Ref: %s.",
-                    event.paymentType(), event.amount().amount(), event.amount().currency(), event.reason(), event.reference());
+                    event.paymentType(), event.amount().amount(), event.amount().currency(), event.reason(),
+                    event.reference());
 
             if (Boolean.TRUE.equals(user.getSmsNotificationsEnabled())) {
-                smsAlertPort.sendSms(user.getId(), user.getPhoneNumber(), msg, NotificationType.PAYMENT_FAILED, event.reference());
+                smsAlertPort.sendSms(user.getId(), user.getPhoneNumber(), msg, NotificationType.PAYMENT_FAILED,
+                        event.reference());
             }
             if (Boolean.TRUE.equals(user.getPushNotificationsEnabled()) && user.getPushToken() != null) {
                 pushNotificationPort.sendPush(user.getId(), user.getPushToken(), "Transaction Failed", msg,
@@ -147,6 +156,7 @@ public class NotificationEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void onUserSecurityEvent(UserSecurityEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing security alert: {} for user: {}", event.action(), event.userId());
@@ -154,7 +164,8 @@ public class NotificationEventListener {
         String msg = String.format("Nadi Pay Security Alert: %s on your account. Details: %s.",
                 event.action().replace("_", " "), event.details());
 
-        smsAlertPort.sendSms(event.userId(), event.phoneNumber(), msg, NotificationType.SECURITY_ALERT, event.eventId().toString());
+        smsAlertPort.sendSms(event.userId(), event.phoneNumber(), msg, NotificationType.SECURITY_ALERT,
+                event.eventId().toString());
 
         Optional<UserAccountEntity> userOpt = (event.userId() != null)
                 ? userAccountRepository.findById(event.userId())
@@ -168,7 +179,8 @@ public class NotificationEventListener {
     }
 
     private String maskAccountNumber(String acc) {
-        if (acc == null || acc.length() < 4) return "****";
+        if (acc == null || acc.length() < 4)
+            return "****";
         return "****" + acc.substring(acc.length() - 4);
     }
 }
