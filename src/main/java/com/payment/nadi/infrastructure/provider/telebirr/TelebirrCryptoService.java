@@ -15,12 +15,6 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.TreeMap;
 
-/**
- * Handles cryptographic operations required by the Telebirr payment gateway:
- * - SHA256withRSA signature generation using Merchant Private Key
- * - SHA256withRSA signature verification using Telebirr Public Key
- * - Parameter sorting and sign string construction (ASCII sort order)
- */
 @Component
 public class TelebirrCryptoService {
 
@@ -28,9 +22,6 @@ public class TelebirrCryptoService {
     private static final String SIGN_ALGORITHMS = "SHA256withRSA";
     private static final String RSA = "RSA";
 
-    /**
-     * Builds sorted string representation of key-value pairs (excluding 'sign' and null/empty values).
-     */
     public String buildSignString(Map<String, ?> params) {
         Map<String, Object> sortedMap = new TreeMap<>();
         params.forEach((k, v) -> {
@@ -57,7 +48,8 @@ public class TelebirrCryptoService {
             if (privateKeyStr == null || privateKeyStr.isBlank() || privateKeyStr.length() < 64) {
                 // Safe deterministic sandbox fallback for test/dev environments
                 log.debug("Using test hash signature for sandbox environment");
-                return Base64.getEncoder().encodeToString(("MOCK_SIGN_" + data.hashCode()).getBytes(StandardCharsets.UTF_8));
+                return Base64.getEncoder()
+                        .encodeToString(("MOCK_SIGN_" + data.hashCode()).getBytes(StandardCharsets.UTF_8));
             }
 
             String cleanKey = cleanPem(privateKeyStr);
@@ -86,7 +78,7 @@ public class TelebirrCryptoService {
         }
         try {
             if (publicKeyStr == null || publicKeyStr.isBlank() || publicKeyStr.length() < 64) {
-                // In sandbox / test environment without public keys, inspect decoded or raw test signature
+
                 String decoded = "";
                 try {
                     decoded = new String(Base64.getDecoder().decode(sign), StandardCharsets.UTF_8);
