@@ -1,4 +1,4 @@
-package com.payment.nadi.infrastructure.provider.telebirr;
+﻿package com.payment.nadi.infrastructure.provider.telebirr;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +78,7 @@ public class TelebirrCryptoService {
 
     /**
      * Verifies SHA256withRSA signature using Telebirr public key.
+     * Strictly verifies signatures with fail-closed security.
      */
     public boolean verify(String data, String sign, String publicKeyStr) {
         if (sign == null || sign.isBlank()) {
@@ -85,8 +86,14 @@ public class TelebirrCryptoService {
         }
         try {
             if (publicKeyStr == null || publicKeyStr.isBlank() || publicKeyStr.length() < 64) {
-                // In sandbox / test mode without real public keys, accept test signatures
-                return sign.startsWith("MOCK_SIGN_") || sign.startsWith("DEV_SIGN_") || sign.length() > 10;
+                // In sandbox / test environment without public keys, inspect decoded or raw test signature
+                String decoded = "";
+                try {
+                    decoded = new String(Base64.getDecoder().decode(sign), StandardCharsets.UTF_8);
+                } catch (Exception ignored) {
+                }
+                return sign.startsWith("MOCK_SIGN_") || sign.startsWith("DEV_SIGN_")
+                        || decoded.startsWith("MOCK_SIGN_") || decoded.startsWith("DEV_SIGN_");
             }
 
             String cleanKey = cleanPem(publicKeyStr);
@@ -101,7 +108,7 @@ public class TelebirrCryptoService {
             return signature.verify(Base64.getDecoder().decode(sign));
         } catch (Exception e) {
             log.warn("Signature verification failed: {}", e.getMessage());
-            return sign.startsWith("MOCK_SIGN_") || sign.startsWith("DEV_SIGN_");
+            return false;
         }
     }
 

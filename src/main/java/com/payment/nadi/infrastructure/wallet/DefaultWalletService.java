@@ -1,4 +1,4 @@
-package com.payment.nadi.infrastructure.wallet;
+﻿package com.payment.nadi.infrastructure.wallet;
 
 import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.domain.exception.InsufficientBalanceException;
@@ -44,6 +44,23 @@ public class DefaultWalletService implements WalletService {
         BigDecimal balance = ledgerRepository.calculateBalance(accountId);
         log.debug("Current balance for account {}: {}, requested: {}", accountId, balance, amount.amount());
         return balance != null && balance.compareTo(amount.amount()) >= 0;
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public void lockAccountsInOrder(UUID accountA, UUID accountB) {
+        if (accountA == null || accountB == null || accountA.equals(accountB)) {
+            return;
+        }
+        // Strict ACID Ordering: Always acquire locks in deterministic lexicographical order to prevent deadlocks
+        UUID firstLockId = accountA.compareTo(accountB) < 0 ? accountA : accountB;
+        UUID secondLockId = accountA.compareTo(accountB) < 0 ? accountB : accountA;
+
+        log.debug("Acquiring ordered pessimistic write locks on accounts: {} then {}", firstLockId, secondLockId);
+        userAccountRepository.findBySourceAccountIdForUpdate(firstLockId)
+                .or(() -> userAccountRepository.findByIdForUpdate(firstLockId));
+        userAccountRepository.findBySourceAccountIdForUpdate(secondLockId)
+                .or(() -> userAccountRepository.findByIdForUpdate(secondLockId));
     }
 
     @Override

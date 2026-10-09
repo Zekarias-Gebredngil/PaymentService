@@ -1,4 +1,4 @@
-package com.payment.nadi.infrastructure.persistence.adapter;
+﻿package com.payment.nadi.infrastructure.persistence.adapter;
 
 import com.payment.nadi.application.port.out.IdempotencyStore;
 import com.payment.nadi.infrastructure.persistence.entity.IdempotencyRecordEntity;
@@ -59,26 +59,38 @@ public class DatabaseIdempotencyStore implements IdempotencyStore {
     @Override
     @Transactional
     public boolean lock(String idempotencyKey, long timeoutSeconds) {
-        Optional<IdempotencyRecordEntity> existing = repository.findById(idempotencyKey);
-        if (existing.isPresent()) {
+        try {
+            Optional<IdempotencyRecordEntity> existing = repository.findById(idempotencyKey);
+            if (existing.isPresent()) {
+                IdempotencyRecordEntity record = existing.get();
+                // If existing expired, allow re-lock
+                if (record.getExpiresAt().isBefore(Instant.now())) {
+                    repository.delete(record);
+                } else {
+                    return false;
+                }
+            }
+            Instant now = Instant.now();
+            IdempotencyRecordEntity entity = IdempotencyRecordEntity.builder()
+                    .idempotencyKey(idempotencyKey)
+                    .requestHash("IN_PROGRESS")
+                    .locked(true)
+                    .createdAt(now)
+                    .expiresAt(now.plus(timeoutSeconds, ChronoUnit.SECONDS))
+                    .build();
+            repository.saveAndFlush(entity);
+            return true;
+        } catch (Exception ex) {
+            log.warn("Could not acquire atomic idempotency lock for key {}: {}", idempotencyKey, ex.getMessage());
             return false;
         }
-        Instant now = Instant.now();
-        IdempotencyRecordEntity entity = IdempotencyRecordEntity.builder()
-                .idempotencyKey(idempotencyKey)
-                .locked(true)
-                .createdAt(now)
-                .expiresAt(now.plus(timeoutSeconds, ChronoUnit.SECONDS))
-                .build();
-        repository.save(entity);
-        return true;
     }
 
     @Override
     @Transactional
     public void unlock(String idempotencyKey) {
         repository.findById(idempotencyKey).ifPresent(entity -> {
-            if (entity.getResponseJson() == null) {
+            if (entity.getResponseJson() == null || "IN_PROGRESS".equals(entity.getRequestHash())) {
                 repository.delete(entity);
             } else {
                 entity.setLocked(false);

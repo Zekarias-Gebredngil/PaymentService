@@ -21,7 +21,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class TransferServiceTest {
@@ -45,6 +45,7 @@ class TransferServiceTest {
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(idempotencyStore.lock(any(), anyLong())).thenReturn(true);
 
         transferService = new TransferService(
                 paymentRepository,

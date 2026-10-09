@@ -1,4 +1,4 @@
-package com.payment.nadi.infrastructure.persistence.adapter;
+﻿package com.payment.nadi.infrastructure.persistence.adapter;
 
 import com.payment.nadi.domain.model.Payment;
 import com.payment.nadi.domain.model.PaymentStatus;
@@ -62,8 +62,9 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
 
     @Override
     public List<Payment> findByCustomerId(UUID customerId, int limit, int offset) {
-        int pageNumber = offset / limit;
-        return repository.findByCustomerIdOrderByCreatedAtDesc(customerId, PageRequest.of(pageNumber, limit))
+        int pageSize = Math.max(1, limit);
+        int pageNumber = Math.max(0, offset / pageSize);
+        return repository.findByCustomerIdOrderByCreatedAtDesc(customerId, PageRequest.of(pageNumber, pageSize))
                 .stream()
                 .map(mapper::toDomain)
                 .toList();

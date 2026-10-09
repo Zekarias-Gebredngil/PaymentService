@@ -1,4 +1,4 @@
-package com.payment.nadi.application.port.out;
+﻿package com.payment.nadi.application.port.out;
 
 import com.payment.nadi.domain.model.Money;
 
@@ -6,7 +6,8 @@ import java.util.UUID;
 
 /**
  * Port decoupling Payment Service from internal balance and wallet operations.
- * Allows seamless integration with an external Wallet microservice or local ledger.
+ * Allows seamless integration with an external Wallet microservice or local
+ * ledger.
  */
 public interface WalletService {
 
@@ -17,6 +18,8 @@ public interface WalletService {
     void debit(UUID accountId, Money amount, String transactionRef, String description);
 
     void credit(UUID accountId, Money amount, String transactionRef, String description);
+
+    void lockAccountsInOrder(UUID accountA, UUID accountB);
 
     Money getBalance(UUID accountId, String currencyCode);
 }

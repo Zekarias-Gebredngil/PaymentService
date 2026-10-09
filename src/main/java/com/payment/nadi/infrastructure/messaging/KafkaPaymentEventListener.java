@@ -1,15 +1,12 @@
-package com.payment.nadi.infrastructure.messaging;
+﻿package com.payment.nadi.infrastructure.messaging;
 
 import com.payment.nadi.domain.event.PaymentDomainEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Listens to domain events published to the Spring event bus
- * and forwards them to Apache Kafka.
- */
 @Component
 public class KafkaPaymentEventListener {
 
@@ -21,9 +18,9 @@ public class KafkaPaymentEventListener {
         this.kafkaPaymentProducer = kafkaPaymentProducer;
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onPaymentDomainEvent(PaymentDomainEvent event) {
-        log.debug("[KAFKA_LISTENER] Intercepted domain event {} [id={}], forwarding to Kafka",
+        log.debug("[KAFKA_LISTENER] Intercepted domain event {} [id={}] after commit, forwarding to Kafka",
                 event.getEventType(), event.getEventId());
         kafkaPaymentProducer.publish(event);
     }

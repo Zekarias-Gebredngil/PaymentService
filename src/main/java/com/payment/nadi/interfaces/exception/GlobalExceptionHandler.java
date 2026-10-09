@@ -1,6 +1,7 @@
-package com.payment.nadi.interfaces.exception;
+﻿package com.payment.nadi.interfaces.exception;
 
 import com.payment.nadi.common.response.ApiResponse;
+import com.payment.nadi.domain.exception.DuplicatePaymentException;
 import com.payment.nadi.domain.exception.InsufficientBalanceException;
 import com.payment.nadi.domain.exception.InvalidPaymentException;
 import com.payment.nadi.domain.exception.PaymentException;
@@ -27,6 +28,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNotFound(PaymentNotFoundException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicatePaymentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicatePayment(DuplicatePaymentException ex) {
+        log.warn("Duplicate / in-progress payment conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
     }
 

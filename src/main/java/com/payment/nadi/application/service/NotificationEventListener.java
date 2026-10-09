@@ -1,4 +1,4 @@
-package com.payment.nadi.application.service;
+﻿package com.payment.nadi.application.service;
 
 import com.payment.nadi.application.port.out.PushNotificationPort;
 import com.payment.nadi.application.port.out.SmsAlertPort;
@@ -11,9 +11,10 @@ import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAccountRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Map;
 import java.util.Optional;
@@ -37,7 +38,7 @@ public class NotificationEventListener {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onTransferCompleted(TransferCompletedEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing transfer alerts for ref: {}", event.reference());
 
@@ -93,7 +94,7 @@ public class NotificationEventListener {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onPaymentCompleted(PaymentCompletedEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing payment completion alert for ref: {}", event.reference());
 
@@ -128,7 +129,7 @@ public class NotificationEventListener {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onPaymentFailed(PaymentFailedEvent event) {
         log.warn("[NOTIFICATION_LISTENER] Processing payment failed alert for ref: {}", event.reference());
 
@@ -157,7 +158,7 @@ public class NotificationEventListener {
     }
 
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onUserSecurityEvent(UserSecurityEvent event) {
         log.info("[NOTIFICATION_LISTENER] Processing security alert: {} for user: {}", event.action(), event.userId());
 

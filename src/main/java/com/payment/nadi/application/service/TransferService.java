@@ -1,4 +1,4 @@
-package com.payment.nadi.application.service;
+﻿package com.payment.nadi.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +9,7 @@ import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.application.port.out.IdempotencyStore;
 import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.domain.event.TransferCompletedEvent;
+import com.payment.nadi.domain.exception.DuplicatePaymentException;
 import com.payment.nadi.domain.exception.InsufficientBalanceException;
 import com.payment.nadi.domain.exception.InvalidPaymentException;
 import com.payment.nadi.domain.model.Money;
@@ -65,7 +66,7 @@ public class TransferService implements TransferUseCase {
             throw new InvalidPaymentException("Source and destination accounts must be different");
         }
 
-        // 2. Idempotency Check
+        // 2. Idempotency Check & Pre-Locking
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             Optional<IdempotencyStore.IdempotencyEntry> existing = idempotencyStore.find(idempotencyKey);
             if (existing.isPresent()) {
@@ -76,77 +77,94 @@ public class TransferService implements TransferUseCase {
                     log.warn("Failed to deserialize cached idempotency response: {}", e.getMessage());
                 }
             }
-        }
-
-        Money amount = Money.of(request.amount(), request.currency());
-
-        // 3. Validate accounts and balance
-        walletService.validateAccount(request.sourceAccountId());
-        walletService.validateAccount(request.destinationAccountId());
-
-        if (!walletService.hasSufficientBalance(request.sourceAccountId(), amount)) {
-            throw new InsufficientBalanceException("Source account has insufficient balance for transfer of " + amount);
-        }
-
-        // 4. Create Payment
-        String reference = PaymentReferenceGenerator.generatePaymentReference(PaymentType.TRANSFER);
-        Payment payment = Payment.create(
-                reference,
-                PaymentType.TRANSFER,
-                amount,
-                request.customerId(),
-                request.sourceAccountId(),
-                request.destinationAccountId(),
-                PaymentProviderType.INTERNAL_LEDGER,
-                request.sourceSystem(),
-                request.description() != null ? request.description() : "Account Transfer",
-                request.metadata()
-        );
-        Payment savedPayment = paymentRepository.save(payment);
-
-        // 5. Atomic Debit & Credit via Wallet Service
-        String txRef = PaymentReferenceGenerator.generateTransactionReference();
-        walletService.debit(request.sourceAccountId(), amount, txRef, "Transfer debit: " + savedPayment.getReference());
-        walletService.credit(request.destinationAccountId(), amount, txRef, "Transfer credit: " + savedPayment.getReference());
-
-        // 6. Record Transaction
-        Transaction tx = Transaction.create(
-                savedPayment.getId(),
-                txRef,
-                PaymentType.TRANSFER,
-                amount,
-                Money.zero(amount.currency()),
-                request.sourceAccountId(),
-                "Transfer completed: " + savedPayment.getReference(),
-                PaymentStatus.SUCCESS
-        );
-        transactionRepository.save(tx);
-
-        // 7. Update Payment to SUCCESS
-        savedPayment.markAsSuccess(txRef);
-        paymentRepository.save(savedPayment);
-
-        // 8. Publish Event
-        eventPublisher.publish(TransferCompletedEvent.now(
-                savedPayment.getId(),
-                savedPayment.getReference(),
-                amount,
-                request.sourceAccountId(),
-                request.destinationAccountId(),
-                savedPayment.getDescription()
-        ));
-
-        PaymentResponse response = PaymentResponse.from(savedPayment);
-
-        // 9. Cache Idempotency
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            try {
-                idempotencyStore.save(idempotencyKey, String.valueOf(request.hashCode()), savedPayment.getId(), objectMapper.writeValueAsString(response), 1440);
-            } catch (JsonProcessingException e) {
-                log.warn("Failed to serialize response for idempotency caching: {}", e.getMessage());
+            boolean acquiredLock = idempotencyStore.lock(idempotencyKey, 60);
+            if (!acquiredLock) {
+                log.warn("Concurrent transfer request in progress for key: {}", idempotencyKey);
+                throw new DuplicatePaymentException("Concurrent transfer request in progress for key: " + idempotencyKey);
             }
         }
 
-        return response;
+        try {
+            Money amount = Money.of(request.amount(), request.currency());
+
+            // 3. Validate accounts and balance
+            walletService.validateAccount(request.sourceAccountId());
+            walletService.validateAccount(request.destinationAccountId());
+
+            if (!walletService.hasSufficientBalance(request.sourceAccountId(), amount)) {
+                throw new InsufficientBalanceException("Source account has insufficient balance for transfer of " + amount);
+            }
+
+            // 4. Create Payment
+            String reference = PaymentReferenceGenerator.generatePaymentReference(PaymentType.TRANSFER);
+            Payment payment = Payment.create(
+                    reference,
+                    PaymentType.TRANSFER,
+                    amount,
+                    request.customerId(),
+                    request.sourceAccountId(),
+                    request.destinationAccountId(),
+                    PaymentProviderType.INTERNAL_LEDGER,
+                    request.sourceSystem(),
+                    request.description() != null ? request.description() : "Account Transfer",
+                    request.metadata()
+            );
+            Payment savedPayment = paymentRepository.save(payment);
+
+            // 5. Atomic Debit & Credit via Wallet Service with Deadlock-Free Deterministic Lock Ordering
+            walletService.lockAccountsInOrder(request.sourceAccountId(), request.destinationAccountId());
+            String txRef = PaymentReferenceGenerator.generateTransactionReference();
+            walletService.debit(request.sourceAccountId(), amount, txRef, "Transfer debit: " + savedPayment.getReference());
+            walletService.credit(request.destinationAccountId(), amount, txRef, "Transfer credit: " + savedPayment.getReference());
+
+            // 6. Record Transaction
+            Transaction tx = Transaction.create(
+                    savedPayment.getId(),
+                    txRef,
+                    PaymentType.TRANSFER,
+                    amount,
+                    Money.zero(amount.currency()),
+                    request.sourceAccountId(),
+                    "Transfer completed: " + savedPayment.getReference(),
+                    PaymentStatus.SUCCESS
+            );
+            transactionRepository.save(tx);
+
+            // 7. Update Payment to SUCCESS
+            savedPayment.markAsSuccess(txRef);
+            paymentRepository.save(savedPayment);
+
+            // 8. Publish Event
+            eventPublisher.publish(TransferCompletedEvent.now(
+                    savedPayment.getId(),
+                    savedPayment.getReference(),
+                    amount,
+                    request.sourceAccountId(),
+                    request.destinationAccountId(),
+                    savedPayment.getDescription()
+            ));
+
+            PaymentResponse response = PaymentResponse.from(savedPayment);
+
+            // 9. Cache Idempotency
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                try {
+                    idempotencyStore.save(idempotencyKey, String.valueOf(request.hashCode()), savedPayment.getId(), objectMapper.writeValueAsString(response), 1440);
+                } catch (JsonProcessingException e) {
+                    log.warn("Failed to serialize response for idempotency caching: {}", e.getMessage());
+                }
+            }
+
+            return response;
+        } catch (Exception ex) {
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                try {
+                    idempotencyStore.unlock(idempotencyKey);
+                } catch (Exception unlockEx) {
+                    log.warn("Failed to release idempotency lock after error: {}", unlockEx.getMessage());
+                }
+            }
+            throw ex;
+        }
     }
 }

@@ -1,4 +1,4 @@
-package com.payment.nadi.infrastructure.configuration;
+﻿package com.payment.nadi.infrastructure.configuration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -46,12 +46,16 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
+        // Modern Browser Standard: Explicit origin patterns when credentials are included
         configuration.setAllowedOriginPatterns(List.of(
-                "*",
+                "http://localhost:[*]",
+                "http://127.0.0.1:[*]",
+                "http://192.168.*:[*]",
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "http://192.168.0.1:*",
-                "http://192.168.0.208:4200"));
+                "http://192.168.*",
+                "https://*.ethiomobilemoney.et:[*]"
+        ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID",
                 "X-Requested-With", "Accept", "Origin"));
