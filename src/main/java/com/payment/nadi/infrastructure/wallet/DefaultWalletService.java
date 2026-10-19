@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.wallet;
+package com.payment.nadi.infrastructure.wallet;
 
 import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.domain.exception.InsufficientBalanceException;

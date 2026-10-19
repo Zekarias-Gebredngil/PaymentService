@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.interfaces.exception;
+package com.payment.nadi.interfaces.exception;
 
 import com.payment.nadi.common.response.ApiResponse;
 import com.payment.nadi.domain.exception.DuplicatePaymentException;

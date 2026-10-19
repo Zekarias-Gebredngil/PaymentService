@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.messaging;
+package com.payment.nadi.infrastructure.messaging;
 
 import com.payment.nadi.domain.event.PaymentDomainEvent;
 import org.slf4j.Logger;

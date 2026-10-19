@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.configuration;
+package com.payment.nadi.infrastructure.configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.admin.AdminClientConfig;

@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.configuration;
+package com.payment.nadi.infrastructure.configuration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

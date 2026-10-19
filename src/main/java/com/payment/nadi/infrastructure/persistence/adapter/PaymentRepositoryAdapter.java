@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.persistence.adapter;
+package com.payment.nadi.infrastructure.persistence.adapter;
 
 import com.payment.nadi.domain.model.Payment;
 import com.payment.nadi.domain.model.PaymentStatus;

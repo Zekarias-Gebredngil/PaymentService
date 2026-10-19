@@ -1,4 +1,4 @@
-﻿package com.payment.nadi.infrastructure.provider.telebirr;
+package com.payment.nadi.infrastructure.provider.telebirr;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
