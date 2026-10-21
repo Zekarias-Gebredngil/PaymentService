@@ -23,4 +23,12 @@ public record ApiResponse<T>(
     public static <T> ApiResponse<T> error(String errorCode, String message) {
         return new ApiResponse<>(false, message, null, errorCode, Instant.now());
     }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public String getStatus() {
+        return errorCode;
+    }
 }

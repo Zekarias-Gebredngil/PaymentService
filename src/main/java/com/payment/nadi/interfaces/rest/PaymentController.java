@@ -4,7 +4,6 @@ import com.payment.nadi.application.dto.response.PageResponse;
 import com.payment.nadi.application.dto.response.PaymentResponse;
 import com.payment.nadi.application.dto.response.TransactionResponse;
 import com.payment.nadi.application.port.in.PaymentQueryUseCase;
-import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.common.response.ApiResponse;
 import com.payment.nadi.domain.model.Money;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,11 +26,9 @@ import java.util.UUID;
 public class PaymentController {
 
     private final PaymentQueryUseCase paymentQueryUseCase;
-    private final WalletService walletService;
 
-    public PaymentController(PaymentQueryUseCase paymentQueryUseCase, WalletService walletService) {
+    public PaymentController(PaymentQueryUseCase paymentQueryUseCase) {
         this.paymentQueryUseCase = paymentQueryUseCase;
-        this.walletService = walletService;
     }
 
     @GetMapping("/accounts/{accountId}/balance")
@@ -41,7 +38,7 @@ public class PaymentController {
             @PathVariable UUID accountId,
             @RequestParam(defaultValue = "ETB") String currency
     ) {
-        Money balance = walletService.getBalance(accountId, currency);
+        Money balance = paymentQueryUseCase.getAccountBalance(accountId, currency);
         return ResponseEntity.ok(ApiResponse.ok(balance));
     }
 

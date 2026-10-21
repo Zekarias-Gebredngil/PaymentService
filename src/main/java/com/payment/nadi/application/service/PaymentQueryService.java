@@ -7,10 +7,12 @@ import com.payment.nadi.application.port.in.PaymentQueryUseCase;
 import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.application.port.out.PaymentProvider;
 import com.payment.nadi.application.port.out.PaymentProviderResolver;
+import com.payment.nadi.application.port.out.WalletService;
 import com.payment.nadi.application.port.out.dto.PaymentStatusResult;
 import com.payment.nadi.domain.event.PaymentCompletedEvent;
 import com.payment.nadi.domain.event.PaymentFailedEvent;
 import com.payment.nadi.domain.exception.PaymentNotFoundException;
+import com.payment.nadi.domain.model.Money;
 import com.payment.nadi.domain.model.Payment;
 import com.payment.nadi.domain.model.PaymentStatus;
 import com.payment.nadi.domain.model.Transaction;
@@ -34,17 +36,25 @@ public class PaymentQueryService implements PaymentQueryUseCase {
     private final TransactionRepository transactionRepository;
     private final PaymentProviderResolver providerResolver;
     private final EventPublisher eventPublisher;
+    private final WalletService walletService;
 
     public PaymentQueryService(
             PaymentRepository paymentRepository,
             TransactionRepository transactionRepository,
             PaymentProviderResolver providerResolver,
-            EventPublisher eventPublisher
+            EventPublisher eventPublisher,
+            WalletService walletService
     ) {
         this.paymentRepository = paymentRepository;
         this.transactionRepository = transactionRepository;
         this.providerResolver = providerResolver;
         this.eventPublisher = eventPublisher;
+        this.walletService = walletService;
+    }
+
+    @Override
+    public Money getAccountBalance(UUID accountId, String currency) {
+        return walletService.getBalance(accountId, currency);
     }
 
     @Override

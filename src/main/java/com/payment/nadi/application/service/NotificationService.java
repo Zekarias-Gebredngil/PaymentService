@@ -87,7 +87,7 @@ public class NotificationService implements NotificationUseCase {
         }
 
         List<NotificationDto> dtos = pageResult.getContent().stream()
-                .map(NotificationDto::fromEntity)
+                .map(com.payment.nadi.infrastructure.persistence.mapper.NotificationPersistenceMapper::toDto)
                 .toList();
 
         return PageResponse.of(dtos, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());

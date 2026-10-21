@@ -8,7 +8,11 @@ import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataNotificationRepository;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataPaymentRepository;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAccountRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -17,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Transactional(readOnly = true)
 public class ActivityLogService {
 
     private final SpringDataUserAccountRepository accountRepository;
@@ -40,7 +45,12 @@ public class ActivityLogService {
             String status,
             String query
     ) {
-        List<ActivityLogDto> allActivities = collectAllActivities();
+        int safePage = Math.max(0, page);
+        int safeSize = size > 0 ? size : 10;
+
+        // Bounded collection: Query only recent records rather than full table scans to safeguard JVM heap
+        int maxFetch = Math.min(500, Math.max(100, (safePage + 1) * safeSize * 3));
+        List<ActivityLogDto> allActivities = collectRecentActivities(maxFetch);
 
         // 1. Sort by timestamp descending
         allActivities.sort(Comparator.comparing(ActivityLogDto::timestamp, Comparator.reverseOrder()));
@@ -73,8 +83,6 @@ public class ActivityLogService {
                 .toList();
 
         long total = filtered.size();
-        int safePage = Math.max(0, page);
-        int safeSize = size > 0 ? size : 10;
         int skip = safePage * safeSize;
 
         List<ActivityLogDto> pagedItems = filtered.stream()
@@ -86,29 +94,30 @@ public class ActivityLogService {
     }
 
     public Map<String, Long> getActivityStats() {
-        List<ActivityLogDto> all = collectAllActivities();
-        long total = all.size();
-        long governance = all.stream().filter(a -> "GOVERNANCE".equalsIgnoreCase(a.category())).count();
-        long financial = all.stream().filter(a -> "FINANCIAL".equalsIgnoreCase(a.category())).count();
-        long security = all.stream().filter(a -> "SECURITY".equalsIgnoreCase(a.category())).count();
-        long userMgmt = all.stream().filter(a -> "USER_MANAGEMENT".equalsIgnoreCase(a.category())).count();
-        long system = all.stream().filter(a -> "SYSTEM".equalsIgnoreCase(a.category())).count();
+        long accountsCount = accountRepository.count();
+        long paymentsCount = paymentRepository.count();
+        long notifsCount = notificationRepository.count();
+        long total = accountsCount + paymentsCount + notifsCount;
+
+        long pendingAccounts = accountRepository.countByStatus("PENDING_APPROVAL");
+        long activeAccounts = accountRepository.countByStatus("ACTIVE");
 
         return Map.of(
                 "total", total,
-                "governance", governance,
-                "financial", financial,
-                "security", security,
-                "userManagement", userMgmt,
-                "system", system
+                "governance", activeAccounts + pendingAccounts,
+                "financial", paymentsCount,
+                "security", notifsCount,
+                "userManagement", accountsCount,
+                "system", notifsCount
         );
     }
 
-    private List<ActivityLogDto> collectAllActivities() {
+    private List<ActivityLogDto> collectRecentActivities(int limit) {
         List<ActivityLogDto> list = new ArrayList<>();
+        Pageable recent = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        // 1. Collect from User Accounts
-        List<UserAccountEntity> accounts = accountRepository.findAll();
+        // 1. Collect recent User Accounts
+        List<UserAccountEntity> accounts = accountRepository.findAll(recent).getContent();
         for (UserAccountEntity u : accounts) {
             String shortId = u.getId().toString().substring(0, 8).toUpperCase();
 
@@ -167,8 +176,8 @@ public class ActivityLogService {
             }
         }
 
-        // 2. Collect from Payments
-        List<PaymentEntity> payments = paymentRepository.findAll();
+        // 2. Collect recent Payments
+        List<PaymentEntity> payments = paymentRepository.findAll(recent).getContent();
         for (PaymentEntity p : payments) {
             String shortId = p.getId().toString().substring(0, 8).toUpperCase();
             String pType = p.getType() != null ? p.getType().name() : "PAYMENT";
@@ -205,8 +214,8 @@ public class ActivityLogService {
             }
         }
 
-        // 3. Collect from Notifications
-        List<NotificationEntity> notifs = notificationRepository.findAll();
+        // 3. Collect recent Notifications
+        List<NotificationEntity> notifs = notificationRepository.findAll(recent).getContent();
         for (NotificationEntity n : notifs) {
             String shortId = n.getId().toString().substring(0, 8).toUpperCase();
             String channel = n.getChannel() != null ? n.getChannel().name() : "SMS";

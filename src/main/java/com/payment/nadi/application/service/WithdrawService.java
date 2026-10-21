@@ -28,8 +28,11 @@ import com.payment.nadi.domain.repository.PaymentRepository;
 import com.payment.nadi.domain.repository.TransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 
@@ -46,6 +49,32 @@ public class WithdrawService implements WithdrawUseCase {
     private final EventPublisher eventPublisher;
     private final IdempotencyStore idempotencyStore;
     private final ObjectMapper objectMapper;
+    private final TransactionOperations txOperations;
+
+    @Autowired
+    public WithdrawService(
+            PaymentRepository paymentRepository,
+            TransactionRepository transactionRepository,
+            PaymentAttemptRepository attemptRepository,
+            PaymentProviderResolver providerResolver,
+            WalletService walletService,
+            EventPublisher eventPublisher,
+            IdempotencyStore idempotencyStore,
+            ObjectMapper objectMapper,
+            @Autowired(required = false) PlatformTransactionManager transactionManager
+    ) {
+        this.paymentRepository = paymentRepository;
+        this.transactionRepository = transactionRepository;
+        this.attemptRepository = attemptRepository;
+        this.providerResolver = providerResolver;
+        this.walletService = walletService;
+        this.eventPublisher = eventPublisher;
+        this.idempotencyStore = idempotencyStore;
+        this.objectMapper = objectMapper;
+        this.txOperations = (transactionManager != null)
+                ? new TransactionTemplate(transactionManager)
+                : TransactionOperations.withoutTransaction();
+    }
 
     public WithdrawService(
             PaymentRepository paymentRepository,
@@ -57,18 +86,10 @@ public class WithdrawService implements WithdrawUseCase {
             IdempotencyStore idempotencyStore,
             ObjectMapper objectMapper
     ) {
-        this.paymentRepository = paymentRepository;
-        this.transactionRepository = transactionRepository;
-        this.attemptRepository = attemptRepository;
-        this.providerResolver = providerResolver;
-        this.walletService = walletService;
-        this.eventPublisher = eventPublisher;
-        this.idempotencyStore = idempotencyStore;
-        this.objectMapper = objectMapper;
+        this(paymentRepository, transactionRepository, attemptRepository, providerResolver, walletService, eventPublisher, idempotencyStore, objectMapper, null);
     }
 
     @Override
-    @Transactional
     public PaymentResponse initiateWithdraw(WithdrawRequest request, String idempotencyKey) {
         log.info("Processing withdrawal request for customer: {}, amount: {} {}",
                 request.customerId(), request.amount(), request.currency());
@@ -88,32 +109,34 @@ public class WithdrawService implements WithdrawUseCase {
 
         Money amount = Money.of(request.amount(), request.currency());
 
-        // 2. Validate source account balance
-        walletService.validateAccount(request.sourceAccountId());
-        if (!walletService.hasSufficientBalance(request.sourceAccountId(), amount)) {
-            throw new InsufficientBalanceException("Account " + request.sourceAccountId() + " has insufficient balance for withdrawal of " + amount);
-        }
+        // 2. Transaction Phase 1: Validate balance, create payment record, and reserve/debit from wallet
+        Payment savedPayment = txOperations.execute(status -> {
+            walletService.validateAccount(request.sourceAccountId());
+            if (!walletService.hasSufficientBalance(request.sourceAccountId(), amount)) {
+                throw new InsufficientBalanceException("Account " + request.sourceAccountId() + " has insufficient balance for withdrawal of " + amount);
+            }
 
-        // 3. Create Payment record
-        String paymentReference = PaymentReferenceGenerator.generatePaymentReference(PaymentType.WITHDRAW);
-        Payment payment = Payment.create(
-                paymentReference,
-                PaymentType.WITHDRAW,
-                amount,
-                request.customerId(),
-                request.sourceAccountId(),
-                null,
-                request.paymentMethod().type(),
-                request.sourceSystem(),
-                request.description() != null ? request.description() : "Wallet Withdrawal",
-                request.metadata()
-        );
-        Payment savedPayment = paymentRepository.save(payment);
+            String paymentReference = PaymentReferenceGenerator.generatePaymentReference(PaymentType.WITHDRAW);
+            Payment payment = Payment.create(
+                    paymentReference,
+                    PaymentType.WITHDRAW,
+                    amount,
+                    request.customerId(),
+                    request.sourceAccountId(),
+                    null,
+                    request.paymentMethod().type(),
+                    request.sourceSystem(),
+                    request.description() != null ? request.description() : "Wallet Withdrawal",
+                    request.metadata()
+            );
+            Payment saved = paymentRepository.save(payment);
 
-        // 4. Reserve / Debit from wallet
-        walletService.debit(request.sourceAccountId(), amount, savedPayment.getReference(), "Withdrawal hold: " + savedPayment.getReference());
+            // Reserve / Debit from wallet
+            walletService.debit(request.sourceAccountId(), amount, saved.getReference(), "Withdrawal hold: " + saved.getReference());
+            return saved;
+        });
 
-        // 5. Call Provider
+        // 3. Resolve Provider
         PaymentProvider provider = providerResolver.resolve(request.paymentMethod().type());
         PaymentProviderRequest providerRequest = PaymentProviderRequest.of(
                 savedPayment.getId(),
@@ -127,9 +150,41 @@ public class WithdrawService implements WithdrawUseCase {
                 null
         );
 
+        // 4. Non-transactional Network I/O: External HTTP call to Telebirr B2C occurs outside DB transaction
         PaymentInitiationResult result;
         try {
             result = provider.initiateWithdraw(providerRequest);
+        } catch (Exception ex) {
+            log.error("Provider withdrawal failed for {}: {}", savedPayment.getReference(), ex.getMessage(), ex);
+            // Settle failure and revert funds back to wallet in a committed transaction
+            txOperations.executeWithoutResult(status -> {
+                walletService.credit(request.sourceAccountId(), amount, savedPayment.getReference(), "Withdrawal failed revert: " + savedPayment.getReference());
+                savedPayment.markAsFailed("Provider error: " + ex.getMessage());
+                paymentRepository.save(savedPayment);
+                attemptRepository.save(PaymentAttempt.record(
+                        savedPayment.getId(),
+                        provider.getProvider(),
+                        1,
+                        "ERROR",
+                        savedPayment.getReference(),
+                        null,
+                        "PROVIDER_EXCEPTION",
+                        ex.getMessage()
+                ));
+                eventPublisher.publish(PaymentFailedEvent.now(
+                        savedPayment.getId(),
+                        savedPayment.getReference(),
+                        PaymentType.WITHDRAW,
+                        amount,
+                        savedPayment.getCustomerId(),
+                        ex.getMessage()
+                ));
+            });
+            throw new PaymentException("WITHDRAWAL_PROVIDER_FAILED", "Failed to initiate withdrawal: " + ex.getMessage(), ex);
+        }
+
+        // 5. Transaction Phase 2: Finalize outcome
+        txOperations.executeWithoutResult(status -> {
             attemptRepository.save(PaymentAttempt.record(
                     savedPayment.getId(),
                     provider.getProvider(),
@@ -140,82 +195,64 @@ public class WithdrawService implements WithdrawUseCase {
                     result.errorCode(),
                     result.errorMessage()
             ));
-        } catch (Exception ex) {
-            log.error("Provider withdrawal failed for {}: {}", savedPayment.getReference(), ex.getMessage(), ex);
-            // Revert funds back to wallet
-            walletService.credit(request.sourceAccountId(), amount, savedPayment.getReference(), "Withdrawal failed revert: " + savedPayment.getReference());
-            savedPayment.markAsFailed("Provider error: " + ex.getMessage());
-            paymentRepository.save(savedPayment);
 
-            eventPublisher.publish(PaymentFailedEvent.now(
-                    savedPayment.getId(),
-                    savedPayment.getReference(),
-                    PaymentType.WITHDRAW,
-                    amount,
-                    savedPayment.getCustomerId(),
-                    ex.getMessage()
-            ));
-            throw new PaymentException("WITHDRAWAL_PROVIDER_FAILED", "Failed to initiate withdrawal: " + ex.getMessage(), ex);
-        }
+            if (result.status() == PaymentStatus.SUCCESS) {
+                savedPayment.markAsSuccess(result.providerReference());
+                paymentRepository.save(savedPayment);
 
-        // 6. Handle outcome
-        if (result.status() == PaymentStatus.SUCCESS) {
-            savedPayment.markAsSuccess(result.providerReference());
-            paymentRepository.save(savedPayment);
+                Transaction tx = Transaction.create(
+                        savedPayment.getId(),
+                        PaymentReferenceGenerator.generateTransactionReference(),
+                        PaymentType.WITHDRAW,
+                        amount,
+                        Money.zero(amount.currency()),
+                        request.sourceAccountId(),
+                        "Withdrawal completed: " + savedPayment.getReference(),
+                        PaymentStatus.SUCCESS
+                );
+                transactionRepository.save(tx);
 
-            // Record transaction
-            Transaction tx = Transaction.create(
-                    savedPayment.getId(),
-                    PaymentReferenceGenerator.generateTransactionReference(),
-                    PaymentType.WITHDRAW,
-                    amount,
-                    Money.zero(amount.currency()),
-                    request.sourceAccountId(),
-                    "Withdrawal completed: " + savedPayment.getReference(),
-                    PaymentStatus.SUCCESS
-            );
-            transactionRepository.save(tx);
+                eventPublisher.publish(PaymentCompletedEvent.now(
+                        savedPayment.getId(),
+                        savedPayment.getReference(),
+                        PaymentType.WITHDRAW,
+                        amount,
+                        savedPayment.getCustomerId(),
+                        result.providerReference(),
+                        savedPayment.getSourceSystem()
+                ));
+            } else if (result.status() == PaymentStatus.PENDING || result.status() == PaymentStatus.PROCESSING) {
+                savedPayment.markAsPending(result.providerReference());
+                paymentRepository.save(savedPayment);
 
-            eventPublisher.publish(PaymentCompletedEvent.now(
-                    savedPayment.getId(),
-                    savedPayment.getReference(),
-                    PaymentType.WITHDRAW,
-                    amount,
-                    savedPayment.getCustomerId(),
-                    result.providerReference(),
-                    savedPayment.getSourceSystem()
-            ));
-        } else if (result.status() == PaymentStatus.PENDING || result.status() == PaymentStatus.PROCESSING) {
-            savedPayment.markAsPending(result.providerReference());
-            paymentRepository.save(savedPayment);
+                eventPublisher.publish(PaymentInitiatedEvent.now(
+                        savedPayment.getId(),
+                        savedPayment.getReference(),
+                        PaymentType.WITHDRAW,
+                        amount,
+                        savedPayment.getCustomerId(),
+                        provider.getProvider().name()
+                ));
+            } else {
+                // Provider rejected withdrawal: Revert funds back to user wallet
+                walletService.credit(request.sourceAccountId(), amount, savedPayment.getReference(), "Withdrawal failed revert");
+                savedPayment.markAsFailed(result.errorMessage());
+                paymentRepository.save(savedPayment);
 
-            eventPublisher.publish(PaymentInitiatedEvent.now(
-                    savedPayment.getId(),
-                    savedPayment.getReference(),
-                    PaymentType.WITHDRAW,
-                    amount,
-                    savedPayment.getCustomerId(),
-                    provider.getProvider().name()
-            ));
-        } else {
-            // Revert wallet
-            walletService.credit(request.sourceAccountId(), amount, savedPayment.getReference(), "Withdrawal failed revert");
-            savedPayment.markAsFailed(result.errorMessage());
-            paymentRepository.save(savedPayment);
-
-            eventPublisher.publish(PaymentFailedEvent.now(
-                    savedPayment.getId(),
-                    savedPayment.getReference(),
-                    PaymentType.WITHDRAW,
-                    amount,
-                    savedPayment.getCustomerId(),
-                    result.errorMessage()
-            ));
-        }
+                eventPublisher.publish(PaymentFailedEvent.now(
+                        savedPayment.getId(),
+                        savedPayment.getReference(),
+                        PaymentType.WITHDRAW,
+                        amount,
+                        savedPayment.getCustomerId(),
+                        result.errorMessage()
+                ));
+            }
+        });
 
         PaymentResponse response = PaymentResponse.from(savedPayment);
 
-        // 7. Cache Idempotency
+        // 6. Cache Idempotency
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             try {
                 idempotencyStore.save(idempotencyKey, String.valueOf(request.hashCode()), savedPayment.getId(), objectMapper.writeValueAsString(response), 1440);

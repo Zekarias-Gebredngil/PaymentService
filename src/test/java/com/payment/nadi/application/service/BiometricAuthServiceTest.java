@@ -4,6 +4,7 @@ import com.payment.nadi.application.dto.request.BiometricChallengeRequest;
 import com.payment.nadi.application.dto.request.BiometricLoginRequest;
 import com.payment.nadi.application.dto.request.BiometricRegisterRequest;
 import com.payment.nadi.application.dto.response.BiometricChallengeResponse;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAccountRepository;
@@ -94,10 +95,8 @@ class BiometricAuthServiceTest {
                 "iPhone 15 Pro"
         );
 
-        UserAccountEntity registered = service.registerBiometric(regReq);
-        assertTrue(registered.getBiometricEnabled());
-        assertEquals(publicKeyBase64, registered.getBiometricPublicKey());
-        assertEquals("DEV-12345", registered.getBiometricDeviceId());
+        UserAccountDto registered = service.registerBiometric(regReq);
+        assertTrue(registered.biometricEnabled());
         verify(eventPublisher).publish(any());
     }
 
@@ -117,9 +116,9 @@ class BiometricAuthServiceTest {
                 "DEV-12345"
         );
 
-        UserAccountEntity loggedIn = service.authenticateBiometric(loginReq);
+        UserAccountDto loggedIn = service.authenticateBiometric(loginReq);
         assertNotNull(loggedIn);
-        assertEquals(mockUser.getId(), loggedIn.getId());
+        assertEquals(mockUser.getId(), loggedIn.id());
         verify(eventPublisher).publish(any());
     }
 }

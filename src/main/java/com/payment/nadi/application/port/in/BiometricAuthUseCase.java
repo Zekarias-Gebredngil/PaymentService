@@ -4,19 +4,21 @@ import com.payment.nadi.application.dto.request.BiometricChallengeRequest;
 import com.payment.nadi.application.dto.request.BiometricLoginRequest;
 import com.payment.nadi.application.dto.request.BiometricRegisterRequest;
 import com.payment.nadi.application.dto.response.BiometricChallengeResponse;
-import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
+import com.payment.nadi.application.dto.response.UserAccountDto;
+
+import java.util.Optional;
 
 public interface BiometricAuthUseCase {
 
     BiometricChallengeResponse createChallenge(BiometricChallengeRequest request);
 
-    UserAccountEntity registerBiometric(BiometricRegisterRequest request);
+    UserAccountDto registerBiometric(BiometricRegisterRequest request);
 
-    UserAccountEntity authenticateBiometric(BiometricLoginRequest request);
+    UserAccountDto authenticateBiometric(BiometricLoginRequest request);
 
-    UserAccountEntity disableBiometric(String identifier);
+    UserAccountDto disableBiometric(String identifier);
 
     boolean isBiometricEnabled(String identifier);
 
-    java.util.Optional<UserAccountEntity> getUserStatusForBiometric(String identifier);
+    Optional<UserAccountDto> getUserStatusForBiometric(String identifier);
 }

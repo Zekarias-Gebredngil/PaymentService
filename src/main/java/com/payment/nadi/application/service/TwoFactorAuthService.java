@@ -6,6 +6,7 @@ import com.payment.nadi.application.dto.request.TwoFactorEnableRequest;
 import com.payment.nadi.application.dto.request.TwoFactorSetupRequest;
 import com.payment.nadi.application.dto.request.TwoFactorVerifyRequest;
 import com.payment.nadi.application.dto.response.TwoFactorSetupResponse;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 import com.payment.nadi.application.port.in.TwoFactorAuthUseCase;
 import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.application.port.out.SmsAlertPort;
@@ -13,6 +14,7 @@ import com.payment.nadi.domain.event.UserSecurityEvent;
 import com.payment.nadi.domain.exception.InvalidPaymentException;
 import com.payment.nadi.domain.model.NotificationType;
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
+import com.payment.nadi.infrastructure.persistence.mapper.UserAccountPersistenceMapper;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAccountRepository;
 import com.payment.nadi.infrastructure.security.totp.TotpService;
 import org.slf4j.Logger;
@@ -96,7 +98,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
 
     @Override
     @Transactional
-    public UserAccountEntity enable(TwoFactorEnableRequest request) {
+    public UserAccountDto enable(TwoFactorEnableRequest request) {
         UserAccountEntity user = findUser(request.identifier())
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + request.identifier()));
 
@@ -123,17 +125,17 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
         ));
 
         log.info("2FA TOTP successfully activated for user {}", user.getAccountNumber());
-        return saved;
+        return UserAccountPersistenceMapper.toDto(saved);
     }
 
     @Override
     @Transactional
-    public UserAccountEntity verify(TwoFactorVerifyRequest request) {
+    public UserAccountDto verify(TwoFactorVerifyRequest request) {
         UserAccountEntity user = findUser(request.identifier())
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + request.identifier()));
 
         if (!Boolean.TRUE.equals(user.getTwoFactorEnabled())) {
-            return user; // Already valid / 2FA not enabled
+            return UserAccountPersistenceMapper.toDto(user); // Already valid / 2FA not enabled
         }
 
         String inputCode = request.code().trim();
@@ -142,7 +144,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
         if ("TOTP".equalsIgnoreCase(user.getTwoFactorType()) && user.getTwoFactorSecret() != null) {
             if (totpService.verifyCode(user.getTwoFactorSecret(), inputCode)) {
                 log.info("2FA TOTP verification succeeded for user {}", user.getAccountNumber());
-                return user;
+                return UserAccountPersistenceMapper.toDto(user);
             }
         }
 
@@ -153,7 +155,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
                 user.setOtpExpiresAt(null);
                 repository.save(user);
                 log.info("2FA SMS OTP verification succeeded for user {}", user.getAccountNumber());
-                return user;
+                return UserAccountPersistenceMapper.toDto(user);
             }
         }
 
@@ -165,7 +167,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
                 user.setTwoFactorBackupCodes(String.join(",", codes));
                 repository.save(user);
                 log.info("2FA backup recovery code used for user {}", user.getAccountNumber());
-                return user;
+                return UserAccountPersistenceMapper.toDto(user);
             }
         }
 
@@ -174,7 +176,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
 
     @Override
     @Transactional
-    public UserAccountEntity disable(TwoFactorDisableRequest request) {
+    public UserAccountDto disable(TwoFactorDisableRequest request) {
         UserAccountEntity user = findUser(request.identifier())
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + request.identifier()));
 
@@ -193,7 +195,7 @@ public class TwoFactorAuthService implements TwoFactorAuthUseCase {
         ));
 
         log.info("2FA disabled for user {}", user.getAccountNumber());
-        return saved;
+        return UserAccountPersistenceMapper.toDto(saved);
     }
 
     @Override

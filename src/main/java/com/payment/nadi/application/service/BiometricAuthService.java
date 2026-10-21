@@ -4,11 +4,13 @@ import com.payment.nadi.application.dto.request.BiometricChallengeRequest;
 import com.payment.nadi.application.dto.request.BiometricLoginRequest;
 import com.payment.nadi.application.dto.request.BiometricRegisterRequest;
 import com.payment.nadi.application.dto.response.BiometricChallengeResponse;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 import com.payment.nadi.application.port.in.BiometricAuthUseCase;
 import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.domain.event.UserSecurityEvent;
 import com.payment.nadi.domain.exception.InvalidPaymentException;
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
+import com.payment.nadi.infrastructure.persistence.mapper.UserAccountPersistenceMapper;
 import com.payment.nadi.infrastructure.persistence.repository.SpringDataUserAccountRepository;
 import com.payment.nadi.infrastructure.security.biometric.BiometricService;
 import org.slf4j.Logger;
@@ -68,7 +70,7 @@ public class BiometricAuthService implements BiometricAuthUseCase {
 
     @Override
     @Transactional
-    public UserAccountEntity registerBiometric(BiometricRegisterRequest request) {
+    public UserAccountDto registerBiometric(BiometricRegisterRequest request) {
         UserAccountEntity user = findUser(request.identifier())
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + request.identifier()));
 
@@ -116,12 +118,12 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         ));
 
         log.info("Biometric authentication successfully registered for user {}", user.getAccountNumber());
-        return saved;
+        return UserAccountPersistenceMapper.toDto(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserAccountEntity authenticateBiometric(BiometricLoginRequest request) {
+    public UserAccountDto authenticateBiometric(BiometricLoginRequest request) {
         UserAccountEntity user = findUser(request.identifier())
                 .or(() -> (request.deviceId() != null && !request.deviceId().isBlank())
                         ? repository.findByBiometricDeviceId(request.deviceId().trim())
@@ -156,12 +158,12 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         ));
 
         log.info("Biometric login verified for user {}", user.getAccountNumber());
-        return user;
+        return UserAccountPersistenceMapper.toDto(user);
     }
 
     @Override
     @Transactional
-    public UserAccountEntity disableBiometric(String identifier) {
+    public UserAccountDto disableBiometric(String identifier) {
         UserAccountEntity user = findUser(identifier)
                 .orElseThrow(() -> new InvalidPaymentException("User account not found: " + identifier));
 
@@ -176,7 +178,7 @@ public class BiometricAuthService implements BiometricAuthUseCase {
         ));
 
         log.info("Biometric authentication disabled for user {}", user.getAccountNumber());
-        return saved;
+        return UserAccountPersistenceMapper.toDto(saved);
     }
 
     @Override
@@ -189,7 +191,7 @@ public class BiometricAuthService implements BiometricAuthUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<UserAccountEntity> getUserStatusForBiometric(String identifier) {
-        return findUser(identifier);
+    public Optional<UserAccountDto> getUserStatusForBiometric(String identifier) {
+        return findUser(identifier).map(UserAccountPersistenceMapper::toDto);
     }
 }

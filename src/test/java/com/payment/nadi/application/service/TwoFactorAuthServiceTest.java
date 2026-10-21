@@ -5,6 +5,7 @@ import com.payment.nadi.application.dto.request.TwoFactorEnableRequest;
 import com.payment.nadi.application.dto.request.TwoFactorSetupRequest;
 import com.payment.nadi.application.dto.request.TwoFactorVerifyRequest;
 import com.payment.nadi.application.dto.response.TwoFactorSetupResponse;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 import com.payment.nadi.application.port.out.EventPublisher;
 import com.payment.nadi.application.port.out.SmsAlertPort;
 import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
@@ -87,10 +88,10 @@ class TwoFactorAuthServiceTest {
         long currentWindow = System.currentTimeMillis() / 1000 / 30;
         String validCode = totpService.generateCodeForWindow(secret, currentWindow);
 
-        UserAccountEntity enabledUser = service.enable(new TwoFactorEnableRequest("+251911223344", validCode, secret));
+        UserAccountDto enabledUser = service.enable(new TwoFactorEnableRequest("+251911223344", validCode, secret));
 
-        assertTrue(enabledUser.getTwoFactorEnabled());
-        assertEquals("TOTP", enabledUser.getTwoFactorType());
+        assertTrue(enabledUser.twoFactorEnabled());
+        assertEquals("TOTP", enabledUser.twoFactorType());
         verify(eventPublisher).publish(any());
     }
 
@@ -105,9 +106,9 @@ class TwoFactorAuthServiceTest {
         long currentWindow = System.currentTimeMillis() / 1000 / 30;
         String validCode = totpService.generateCodeForWindow(secret, currentWindow);
 
-        UserAccountEntity verified = service.verify(new TwoFactorVerifyRequest("+251911223344", validCode));
+        UserAccountDto verified = service.verify(new TwoFactorVerifyRequest("+251911223344", validCode));
         assertNotNull(verified);
-        assertEquals(mockUser.getId(), verified.getId());
+        assertEquals(mockUser.getId(), verified.id());
     }
 
     @Test
@@ -119,11 +120,10 @@ class TwoFactorAuthServiceTest {
 
         when(passwordEncoder.matches("myPassword123", "hashed_pwd")).thenReturn(true);
 
-        UserAccountEntity disabled = service.disable(new TwoFactorDisableRequest("+251911223344", "myPassword123", null));
+        UserAccountDto disabled = service.disable(new TwoFactorDisableRequest("+251911223344", "myPassword123", null));
 
-        assertFalse(disabled.getTwoFactorEnabled());
-        assertEquals("NONE", disabled.getTwoFactorType());
-        assertNull(disabled.getTwoFactorSecret());
+        assertFalse(disabled.twoFactorEnabled());
+        assertEquals("NONE", disabled.twoFactorType());
         verify(eventPublisher).publish(any());
     }
 }

@@ -6,10 +6,9 @@ import com.payment.nadi.application.dto.request.TwoFactorEnableRequest;
 import com.payment.nadi.application.dto.request.TwoFactorSetupRequest;
 import com.payment.nadi.application.dto.request.TwoFactorVerifyRequest;
 import com.payment.nadi.application.dto.response.TwoFactorSetupResponse;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 import com.payment.nadi.application.port.in.TwoFactorAuthUseCase;
 import com.payment.nadi.common.response.ApiResponse;
-import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
-import com.payment.nadi.interfaces.rest.AccountController.UserAccountDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,22 +36,22 @@ public class TwoFactorAuthController {
     @PostMapping("/enable")
     @Operation(summary = "Enable 2FA TOTP", description = "Validates the first TOTP code from user authenticator app and locks 2FA activation on the account.")
     public ResponseEntity<ApiResponse<UserAccountDto>> enable(@Valid @RequestBody TwoFactorEnableRequest request) {
-        UserAccountEntity user = twoFactorAuthUseCase.enable(request);
-        return ResponseEntity.ok(ApiResponse.ok("Two-Factor Authentication successfully enabled on your account!", UserAccountDto.fromEntity(user)));
+        UserAccountDto user = twoFactorAuthUseCase.enable(request);
+        return ResponseEntity.ok(ApiResponse.ok("Two-Factor Authentication successfully enabled on your account!", user));
     }
 
     @PostMapping("/verify")
     @Operation(summary = "Verify 2FA Code / Login Step-up", description = "Verifies a 6-digit TOTP code, SMS OTP code, or single-use backup recovery code.")
     public ResponseEntity<ApiResponse<UserAccountDto>> verify(@Valid @RequestBody TwoFactorVerifyRequest request) {
-        UserAccountEntity user = twoFactorAuthUseCase.verify(request);
-        return ResponseEntity.ok(ApiResponse.ok("Two-Factor verification successful!", UserAccountDto.fromEntity(user)));
+        UserAccountDto user = twoFactorAuthUseCase.verify(request);
+        return ResponseEntity.ok(ApiResponse.ok("Two-Factor verification successful!", user));
     }
 
     @PostMapping("/disable")
     @Operation(summary = "Disable 2FA", description = "Requires account password verification to securely deactivate 2FA on the account.")
     public ResponseEntity<ApiResponse<UserAccountDto>> disable(@Valid @RequestBody TwoFactorDisableRequest request) {
-        UserAccountEntity user = twoFactorAuthUseCase.disable(request);
-        return ResponseEntity.ok(ApiResponse.ok("Two-Factor Authentication disabled.", UserAccountDto.fromEntity(user)));
+        UserAccountDto user = twoFactorAuthUseCase.disable(request);
+        return ResponseEntity.ok(ApiResponse.ok("Two-Factor Authentication disabled.", user));
     }
 
     @PostMapping("/send-otp")

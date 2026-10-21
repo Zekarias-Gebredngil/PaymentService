@@ -6,17 +6,17 @@ import com.payment.nadi.application.dto.request.TwoFactorEnableRequest;
 import com.payment.nadi.application.dto.request.TwoFactorSetupRequest;
 import com.payment.nadi.application.dto.request.TwoFactorVerifyRequest;
 import com.payment.nadi.application.dto.response.TwoFactorSetupResponse;
-import com.payment.nadi.infrastructure.persistence.entity.UserAccountEntity;
+import com.payment.nadi.application.dto.response.UserAccountDto;
 
 public interface TwoFactorAuthUseCase {
 
     TwoFactorSetupResponse setup(TwoFactorSetupRequest request);
 
-    UserAccountEntity enable(TwoFactorEnableRequest request);
+    UserAccountDto enable(TwoFactorEnableRequest request);
 
-    UserAccountEntity verify(TwoFactorVerifyRequest request);
+    UserAccountDto verify(TwoFactorVerifyRequest request);
 
-    UserAccountEntity disable(TwoFactorDisableRequest request);
+    UserAccountDto disable(TwoFactorDisableRequest request);
 
     boolean sendOtp(SendOtpRequest request);
 }
