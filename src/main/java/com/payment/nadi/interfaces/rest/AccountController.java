@@ -66,7 +66,7 @@ public class AccountController {
     @Operation(summary = "Admin Register User Account", description = "Allows an administrator to register and provision a new account directly.")
     public ResponseEntity<ApiResponse<UserAccountDto>> adminRegisterAccount(@Valid @RequestBody AdminCreateAccountRequest request) {
         UserAccountDto saved = accountUseCase.adminRegisterAccount(request);
-        boolean shouldActivate = request.autoActivate() == null || Boolean.TRUE.equals(request.autoActivate());
+        boolean shouldActivate = request.autoActivate() == null || request.autoActivate();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("User account successfully registered" + (shouldActivate ? " and activated!" : "!"), saved));
     }

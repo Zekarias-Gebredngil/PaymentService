@@ -11,10 +11,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Standard RFC 6238 / RFC 4226 Time-based One-Time Password (TOTP) engine.
- * Fully compatible with Google Authenticator, Microsoft Authenticator, Authy, and 1Password.
- */
+
 @Service
 public class TotpService {
 

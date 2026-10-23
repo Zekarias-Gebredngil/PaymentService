@@ -17,11 +17,7 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Enterprise biometric cryptographic authentication service.
- * Supports WebAuthn, Apple TouchID/FaceID Secure Enclave, and Android BiometricPrompt KeyStore.
- * Uses public-key challenge-response cryptography with anti-replay nonce protection.
- */
+
 @Service
 public class BiometricService {
 
@@ -37,9 +33,7 @@ public class BiometricService {
         }
     }
 
-    /**
-     * Generates a single-use cryptographically random 256-bit challenge nonce.
-     */
+
     public String generateChallenge(String identifier) {
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
@@ -81,10 +75,7 @@ public class BiometricService {
         return true;
     }
 
-    /**
-     * Cryptographically verifies the digital signature over the challenge using the registered public key.
-     * Supports ECDSA (P-256) and RSA public key standards.
-     */
+
     public boolean verifySignature(String publicKeyBase64, String challenge, String signatureBase64) {
         try {
             if (publicKeyBase64 == null || challenge == null || signatureBase64 == null) {
