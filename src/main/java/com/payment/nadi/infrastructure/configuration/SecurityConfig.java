@@ -27,7 +27,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -51,10 +51,10 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:[*]",
                 "http://127.0.0.1:[*]",
-                "http://192.168.*:[*]",
+                "https://192.168.*:[*]",
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "http://192.168.*",
+                "https://192.168.*",
                 "https://*.ethiomobilemoney.et:[*]"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
